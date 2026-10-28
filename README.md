@@ -13,6 +13,24 @@ RAW PDF → EXTRACTION → CLEANING → VALIDATION → SQL ANALYSIS → PATTERN 
 > **Status:** portfolio project. It is careful with your data, but it is **not** a regulated
 > financial product. Please read [Known limitations](#23-known-limitations).
 
+### Spendly 2.0 at a glance
+
+Spendly has **one Python core** (`src/` + `sql/`) and two interfaces on top of it:
+
+| Interface | Stack | Run it |
+|---|---|---|
+| **Web app (2.0)** — redesigned dark fintech UI at `/app`, plus the landing page | Next.js 16 + TypeScript + Tailwind + Motion + Recharts, talking to a thin **FastAPI** layer (`api/`) | see [Spendly 2.0: web app + API](#spendly-20-web-app--api) |
+| **Classic app** | Streamlit (`app.py`) | `streamlit run app.py` |
+
+Every number in both comes from the same SQL files and Python modules. The web app never calculates
+money in JavaScript.
+
+| Web app overview | Import preview (nothing saved until you confirm) |
+|---|---|
+| ![Web overview](docs/screenshots/web-overview.png) | ![Import preview](docs/screenshots/web-import-preview.png) |
+| **Spending insights** | **Landing page** |
+| ![Web insights](docs/screenshots/web-insights.png) | ![Landing](docs/screenshots/web-landing.png) |
+
 ![Overview](docs/screenshots/overview.png)
 
 ---
@@ -59,7 +77,7 @@ visibly flagged for review.
 | **Anomalies** | Interpretable IQR rule against the same merchant's or category's history, with a plain-English reason. Never labelled fraud. Dismiss / mark expected. |
 | **Dashboard** | 6 Streamlit pages, Plotly charts with Indian rupee formatting (₹1.2L, ₹45K), sidebar filters shared by every page, editable transaction table, CSV export, empty states everywhere. |
 | **Privacy** | PDFs processed in memory and never saved, identifiers masked before storage, nothing sensitive logged, demo and user data in separate databases, one-click delete, private per-visitor databases on public hosting. |
-| **Tests** | 150+ pytest tests on synthetic data, including hand-computed analytics and a ground-truth check of the whole pipeline. |
+| **Tests** | 170+ pytest tests on synthetic data, including hand-computed analytics, a ground-truth check of the whole pipeline and the HTTP API. |
 
 ## 4. Screenshots
 
@@ -112,7 +130,9 @@ tested and explained on its own. The demo dataset goes through **exactly the sam
 
 ```
 spendly/
-├── app.py                      # Streamlit entry point + navigation
+├── app.py                      # Streamlit entry point + navigation (classic UI)
+├── api/                        # FastAPI layer over src/ (Spendly 2.0)
+├── web/                        # Next.js landing page + web app (Spendly 2.0)
 ├── app_pages/                  # Overview, Transactions, Spending Insights, Recurring, Data Quality, Import
 ├── src/
 │   ├── config.py               # settings (env-overridable), categories, transaction types
@@ -132,7 +152,7 @@ spendly/
 │   ├── anomaly_detector.py
 │   ├── ai.py                   # optional Gemini, validated
 │   ├── privacy.py              # masking, log redaction
-│   ├── charts.py · ui.py       # presentation helpers
+│   ├── charts.py · ui.py       # presentation helpers (Streamlit)
 │   └── sample_pdfs.py          # builds synthetic statement PDFs
 ├── sql/                        # 12 analytical queries
 ├── config/rules.json           # merchant aliases + categorization rules
@@ -431,17 +451,92 @@ Don't upload real statements to a public instance you don't control — run Spen
 
 ---
 
-## Marketing website (`web/`)
+## Spendly 2.0: web app + API
 
-A Next.js landing page for Spendly lives in [`web/`](web/README.md). It's fully separate from the
-Python app. Its "Explore Spendly" buttons open the Streamlit app at the URL set in `NEXT_PUBLIC_APP_URL`
-(default `http://localhost:8501`).
+### Architecture
 
-```bash
-cd web && npm install && npm run dev   # http://localhost:3000
+```
+ Browser ──► Next.js (web/)                         FastAPI (api/)                    Python core (unchanged)
+             • landing page  /                      • validates requests             • src/pipeline.py  (import)
+             • app           /app/*   ── /api/* ──► • picks demo / user database ──► • src/analytics.py + sql/*.sql
+             • no money maths in JS    (rewrite)    • serializes results             • src/insights.py, subscription_detector.py,
+                                                                                       anomaly_detector.py, database.py
 ```
 
-Deploy it on Vercel with **Root Directory = `web`**. See [web/README.md](web/README.md) for details.
+- **Why an API layer instead of more Streamlit?** `src/` was already separate from the UI, so a thin API could
+  reuse it without touching a single SQL query or metric definition. Streamlit can't provide the custom shell,
+  drag-and-drop import, editing dialogs and motion the redesign needed. The Streamlit app stays as a fallback.
+- **Same-origin calls.** The browser only calls `/api/*` on the Next.js site, and `next.config.ts` forwards those
+  calls to FastAPI. The backend address (`SPENDLY_API_URL`) is a server-side setting and is never put into the
+  browser bundle.
+- **Data modes.** Every request carries `X-Spendly-Mode: demo | user`. Demo data and your data live in separate
+  databases and can't be mixed. Importing works only in *My data*.
+- **Import is two-step.** `POST /api/import/preview` parses the PDF **in memory** and returns a preview token. The
+  PDF bytes are never kept, only the extracted (already masked) rows, and those expire after 30 minutes.
+  Nothing is written to the database until `POST /api/import/{token}/commit`.
+- **Bulk edits are confirmed.** "Apply this category to every transaction from this merchant" sends the number of
+  rows the user agreed to. The API refuses the change if the real number differs.
+- **Public hosting.** With `SPENDLY_PUBLIC_DEPLOYMENT=true`, each browser session (`X-Spendly-Session`, a random
+  id) gets private in-memory databases. They expire after 2 hours of inactivity, and nothing is written to disk.
+
+API docs are served at `http://localhost:8000/api/docs` (OpenAPI).
+
+### Run locally
+
+```bash
+# 1) API (from the repo root, in your virtual environment)
+pip install -r requirements-dev.txt          # includes FastAPI, uvicorn, test tools
+uvicorn api.main:app --reload --port 8000
+
+# 2) Web app (second terminal)
+cd web
+npm install
+npm run dev                                  # http://localhost:3000  → "Explore Spendly" opens /app
+```
+
+The classic Streamlit app still works: `streamlit run app.py`.
+
+### Environment variables
+
+| Variable | Where | Purpose | Default |
+|---|---|---|---|
+| `SPENDLY_API_URL` | web (server only) | where `/api/*` is forwarded | `http://127.0.0.1:8000` |
+| `NEXT_PUBLIC_APP_URL` | web | target of "Explore Spendly" (public URL only) | `/app` |
+| `NEXT_PUBLIC_SITE_URL` | web | absolute URL for Open Graph images | `http://localhost:3000` |
+| `SPENDLY_PUBLIC_DEPLOYMENT` | API | per-session in-memory data for public hosting | `false` |
+| `SPENDLY_CORS_ORIGINS` | API | comma-separated origins allowed to call the API directly | `http://localhost:3000` |
+| `SPENDLY_DATA_DIR` | API / Streamlit | folder for the SQLite files | `./data` |
+| `SPENDLY_ENABLE_AI`, `GEMINI_API_KEY`, `GEMINI_MODEL` | API / Streamlit | optional AI (off by default; keys stay server-side) | off |
+| `SPENDLY_MAX_UPLOAD_MB`, `SPENDLY_MAX_PDF_PAGES` | API / Streamlit | upload limits | `10`, `60` |
+
+### Checks
+
+```bash
+pytest                                   # Python core + API (from the repo root)
+cd web && npm run lint && npx tsc --noEmit && npm run build
+```
+
+### Deploy
+
+1. **API** on any Python host that runs a long-lived process (for example Render or Railway):
+   - build: `pip install -r requirements-api.txt`
+   - start: `uvicorn api.main:app --host 0.0.0.0 --port $PORT`
+   - env: `SPENDLY_PUBLIC_DEPLOYMENT=true`
+   - Run a **single worker**: the per-session databases live in that process's memory.
+2. **Web** on Vercel:
+   - Root Directory: `web`
+   - env: `SPENDLY_API_URL=https://your-api-host`, `NEXT_PUBLIC_SITE_URL=https://your-site`
+   - Redeploy after changing a variable.
+
+Check your hosts' current request-size and sleep/idle policies. Free tiers often sleep when idle, and a restart
+clears every in-memory session.
+
+### 2.0 limitations
+
+- On a public deployment, visitor data is in-memory and per session by design. It disappears on restart or after
+  2 hours idle. Run Spendly locally for real statements.
+- There are no user accounts. Locally there's one *My data* database per machine.
+- AI on/off is a server setting (environment variables), not a toggle in the UI, so API keys never reach the browser.
 
 ---
 

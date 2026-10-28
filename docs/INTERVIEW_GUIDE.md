@@ -129,15 +129,43 @@ with fewer than 8 payments are skipped. "Unusual" is never presented as fraud.
 - The local SQLite file is documented honestly as unencrypted.
 
 **19. How did you test it?**
-There are 150+ pytest tests:
+There are 170+ pytest tests:
 - hand-computed analytics on a 9-row fixture
 - a 285-row synthetic dataset with ground-truth labels, where every row must be classified correctly
 - synthetic PDFs built with reportlab: multi-page, wrapped lines, password-protected, scanned and corrupt files
 - privacy tests: no file written, nothing sensitive in logs, AI off without a key
+- API tests: the HTTP results equal the SQL layer, the import preview saves nothing before confirmation,
+  merchant-wide edits need a matching confirmation count, and public sessions can't see each other's data
 
 **20. What would you improve next?**
 More bank parsers and OCR, learning rules automatically from manual corrections, budgets, and an encrypted local
 database.
+
+## Spendly 2.0 (web app + API)
+
+**21. Why did you add FastAPI and Next.js instead of improving Streamlit?**
+The Python logic in `src/` and `sql/` was already separate from the UI. A thin API could reuse it without
+rewriting a single query or metric. Streamlit couldn't give me a custom app shell, drag-and-drop import, edit
+dialogs or smooth motion, so the redesign needed a real front end. The Streamlit app still works on the same
+code.
+
+**22. How do you make sure the front end doesn't calculate different numbers?**
+The front end never does money maths. It only formats paise into rupees. Every metric comes from the same SQL
+files through `src/analytics.py`, and API tests check that the HTTP results equal the SQL layer.
+
+**23. How does the import flow keep the "nothing saved before confirmation" rule?**
+`POST /api/import/preview` parses the PDF in memory and keeps only the masked, extracted rows under a random
+token. The token expires after 30 minutes. Only `POST /api/import/{token}/commit` writes to the database, in one
+transaction.
+
+**24. A user applies a category to "all transactions from this merchant". What stops it touching more rows than
+they saw?**
+The dialog shows the exact count and sends it as `expected_count`. The API recounts and refuses with HTTP 409 if
+the numbers differ.
+
+**25. What happens on a public deployment?**
+Each browser session sends a random id. That session gets its own in-memory demo and user databases, which
+expire after inactivity. Nothing is written to disk, and a test proves one session can't see another's data.
 
 ## Numbers worth knowing (demo data)
 - 285 synthetic rows, April–September 2026. One exact duplicate is skipped, so 284 are imported.

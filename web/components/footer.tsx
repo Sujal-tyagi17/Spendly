@@ -28,8 +28,8 @@ export function Footer() {
               <li key={l.href}><a href={l.href} className="text-muted transition-colors hover:text-fg">{l.label}</a></li>
             ))}
             <li>
-              <a href={site.appUrl} target="_blank" rel="noopener noreferrer" className="text-muted transition-colors hover:text-fg">
-                Open the app<span className="sr-only"> (new tab)</span>
+              <a href={site.appUrl} className="text-muted transition-colors hover:text-fg">
+                Open the app
               </a>
             </li>
           </ul>

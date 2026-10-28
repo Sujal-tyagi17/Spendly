@@ -15,6 +15,12 @@
   --color-faint: #5f675d;        /* tertiary text, axis labels */
   --color-up: #e06c5f;           /* restrained red: spent more */
   --color-down: #7fc98a;         /* restrained green: spent less */
+  --color-elevated: #151b14;     /* elevated card (app) */
+  --color-pos: #7fc98a;          /* positive: money in, improvements */
+  --color-neg: #e06c5f;          /* negative: money out up, increases */
+  --color-warn: #e8b04b;         /* warm amber: needs review */
+  --color-err: #ef5a4c;          /* accessible red: errors */
+  --color-info: #8fb8de;         /* neutral info: transfers */
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;

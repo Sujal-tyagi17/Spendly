@@ -1,13 +1,21 @@
-# Spendly — marketing website
+# Spendly web — landing page + app (Spendly 2.0)
 
-The public landing page for Spendly. It's a separate Next.js app that lives next to the Streamlit
-analytics app. **It doesn't change or replace the Python code**: its job is to present the product
-and link people to the running Streamlit app.
+The Next.js front end for Spendly:
+
+- `/` is the marketing landing page.
+- `/app/*` is the redesigned app: Overview, Transactions, Spending Insights, Recurring Payments, Data Quality,
+  and Import & Settings.
+
+**It doesn't do any financial maths.** Every number comes from the FastAPI layer (`../api`), which reuses the
+existing Python modules and SQL files. The browser calls same-origin `/api/*`, and `next.config.ts` forwards
+those calls to `SPENDLY_API_URL`.
 
 ```
 Spendly/
-├── app.py, src/, sql/, tests/ …   ← Streamlit analytics app (Python)
-└── web/                           ← this marketing site (Next.js)
+├── src/, sql/      ← Python core (single source of truth for every metric)
+├── api/            ← FastAPI layer over src/
+├── app.py          ← classic Streamlit UI (still works)
+└── web/            ← this Next.js app
 ```
 
 ## Stack
@@ -18,7 +26,8 @@ Spendly/
   visitor's reduced-motion setting.
 - Lucide icons. Geist fonts are self-hosted through the `geist` package, so the build never contacts
   Google Fonts.
-- Charts are hand-built SVG. No chart library is needed for illustrative previews.
+- Recharts draws the app's charts (trend, weekday, period comparison). Each chart has a "View as table"
+  fallback. The landing page uses hand-built SVG.
 
 ## Structure
 
@@ -30,8 +39,15 @@ web/
 │   ├── globals.css           # tokens, grain, atmosphere, reduced-motion rules
 │   ├── icon.svg              # favicon
 │   └── opengraph-image.png   # social preview (+ twitter-image.png)
+├── app/app/                  # the app: layout + one folder per page
+│   ├── layout.tsx            # AppProvider + AppShell
+│   ├── page.tsx              # Overview
+│   └── transactions/ insights/ recurring/ quality/ import/
 ├── components/
-│   ├── nav.tsx               # transparent → solid on scroll, mobile menu
+│   ├── app/                  # shell (sidebar, header, mobile drawer), filters, charts, edit dialog
+│   ├── ui/                   # design system: Button, Card, MetricCard, InsightCard, badges, states,
+│   │                         #   ConfirmDialog, UploadDropzone, MultiSelect, InfoTip, Toaster
+│   ├── nav.tsx               # landing page: transparent → solid on scroll, mobile menu
 │   ├── hero.tsx, hero-dashboard.tsx
 │   ├── product-preview.tsx   # larger dashboard preview
 │   ├── before-after.tsx      # interactive raw-statement vs Spendly toggle
@@ -39,8 +55,11 @@ web/
 │   ├── how-it-works.tsx, sql-section.tsx, privacy.tsx, final-cta.tsx, footer.tsx
 │   └── charts.tsx, count-up.tsx, reveal.tsx, cta.tsx, logo.tsx, section-heading.tsx
 └── lib/
+    ├── api.ts                # fetch client (mode + session headers), useApi hook
+    ├── store.tsx             # app state: data mode, global filters, meta, toasts
+    ├── hooks.ts, types.ts, format.ts
     ├── site.ts               # app URL (env), GitHub URL, nav links
-    └── demo-data.ts          # synthetic numbers from Spendly's demo dataset
+    └── demo-data.ts          # synthetic numbers for the landing-page previews
 ```
 
 ## Run locally
@@ -53,11 +72,13 @@ npm install
 npm run dev          # http://localhost:3000
 ```
 
-To make "Explore Spendly" open your local Streamlit app, start it in another terminal from the repo root:
+The app needs the API. Start it in another terminal from the repo root:
 
 ```bash
-streamlit run app.py # http://localhost:8501 (the site's default target)
+uvicorn api.main:app --reload --port 8000
 ```
+
+If the API isn't running, the app shows a clear "API isn't reachable" message.
 
 Other commands:
 
@@ -72,29 +93,35 @@ npm start            # serve the production build
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `NEXT_PUBLIC_APP_URL` | URL of the running Streamlit app; every "Explore Spendly" button links here | `http://localhost:8501` |
-| `NEXT_PUBLIC_SITE_URL` | Public URL of this site, used to build absolute Open Graph image URLs | `http://localhost:3000` |
+| `SPENDLY_API_URL` | Where `/api/*` is forwarded. **Server-side only**, never sent to the browser | `http://127.0.0.1:8000` |
+| `NEXT_PUBLIC_APP_URL` | Target of every "Explore Spendly" button | `/app` |
+| `NEXT_PUBLIC_SITE_URL` | Public URL of this site, used for absolute Open Graph image URLs | `http://localhost:3000` |
 
-Copy `.env.example` to `.env.local` to change them locally. `NEXT_PUBLIC_` values are **inlined at
-build time** and visible in the browser, so they must only ever hold public URLs, never secrets.
-Invalid values fall back to the defaults.
+Copy `.env.example` to `.env.local` to change them. `NEXT_PUBLIC_` values are **inlined at build time**, so
+they must only ever hold public URLs. Invalid values fall back to the defaults.
 
 ## Deploy
 
-1. **Deploy the Streamlit app first** (see the root README → Deployment) and copy its URL, e.g.
-   `https://your-app.streamlit.app`.
-2. **Deploy this site on Vercel:**
-   - Import the GitHub repo and set **Root Directory** to `web`. The framework is detected as Next.js.
-   - Add the environment variables `NEXT_PUBLIC_APP_URL=https://your-app.streamlit.app` and
-     `NEXT_PUBLIC_SITE_URL=https://your-site.vercel.app`.
-   - Deploy. If you change a variable later, redeploy, because the values are inlined at build time.
+1. Deploy the API first (see the root README → "Spendly 2.0: web app + API"), with
+   `SPENDLY_PUBLIC_DEPLOYMENT=true`.
+2. On Vercel, import the repo and set **Root Directory** to `web`. Add `SPENDLY_API_URL=https://your-api-host`
+   and `NEXT_PUBLIC_SITE_URL=https://your-site`, then deploy.
 
-Any host that runs `next build` / `next start` works the same way.
+## App behaviour
+
+- **Global filters** (date range, categories, types, merchants) apply to Overview, Transactions, Insights and
+  Recurring, like the original sidebar. They're kept per data mode for the browser session, and switching data
+  mode clears them.
+- **Data mode** (Demo / My data) lives in the sidebar. Demo data is clearly labelled everywhere, and imports are
+  only possible in My data.
+- **Import:** choose a PDF, read it, review the preview, then import. Nothing is saved before you confirm.
+- **Editing:** single rows, or a whole merchant after a confirmation that shows the exact number of affected rows.
+- **Count-up** animates only on first load. Later filter changes update numbers instantly.
 
 ## Content rules
 
-- Every dashboard preview uses **synthetic** numbers taken from Spendly's built-in demo dataset and is
-  labelled "Illustrative · synthetic data".
+- Landing-page previews use **synthetic** numbers taken from Spendly's built-in demo dataset and are
+  labelled "Illustrative · synthetic data". The app itself shows only real API data.
 - There are no testimonials, user counts or performance claims.
 - Privacy statements match the Python implementation: `src/pdf_parser.py`, `src/privacy.py`,
   `src/database.py`, `src/ai.py` and `tests/test_privacy.py`.
