@@ -35,7 +35,7 @@ if mode == "demo":
         path = sample_dir / name
         if path.exists():
             col.download_button(label, path.read_bytes(), file_name=name, mime="application/pdf",
-                                use_container_width=True)
+                                width="stretch")
     st.stop()
 
 # ------------------------------------------------------------------ user mode
@@ -110,10 +110,10 @@ if preview is not None:
             "Type": frame["transaction_type"].map(config.TRANSACTION_TYPES),
             "Category": frame["category"],
             "Note": frame["duplicate_status"].map(status_label),
-        }), hide_index=True, use_container_width=True, height=360)
+        }), hide_index=True, width="stretch", height=360)
     if preview.invalid_rows:
         with st.expander(f"{len(preview.invalid_rows)} row(s) could not be read"):
-            st.dataframe(pd.DataFrame(preview.invalid_rows), hide_index=True, use_container_width=True)
+            st.dataframe(pd.DataFrame(preview.invalid_rows), hide_index=True, width="stretch")
 
     # Optional AI categorization
     enabled, status = ai.ai_status()
@@ -158,7 +158,7 @@ if statements:
         "Statement": s["display_name"], "Format": s["parser_name"],
         "Period": f"{s['statement_period_start']} → {s['statement_period_end']}",
         "Transactions": s["rows_imported"], "Imported": s["created_at"][:16].replace("T", " "),
-    } for s in statements]), hide_index=True, use_container_width=True)
+    } for s in statements]), hide_index=True, width="stretch")
 else:
     st.caption("Nothing imported yet.")
 

@@ -138,7 +138,7 @@ def sidebar(conn: sqlite3.Connection) -> None:
                        format_func=config.TRANSACTION_TYPES.get, placeholder="All types")
         st.multiselect("Merchant", analytics.distinct_values(conn, "normalized_merchant"), key="f_merchants",
                        placeholder="All merchants")
-        st.button("Reset filters", on_click=_reset_filters, use_container_width=True)
+        st.button("Reset filters", on_click=_reset_filters, width="stretch")
 
 
 def current_filters(search: str = "") -> Filters:
@@ -203,7 +203,7 @@ def chart(fig, empty_title: str = "Nothing to chart", empty_message: str = "No d
     if fig is None:
         empty_state(empty_title, empty_message)
         return
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False})
 
 
 def require_data(conn) -> bool:

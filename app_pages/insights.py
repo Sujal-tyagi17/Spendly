@@ -53,7 +53,7 @@ else:
             if data.empty:
                 column.caption("—")
             else:
-                column.dataframe(table(data), hide_index=True, use_container_width=True)
+                column.dataframe(table(data), hide_index=True, width="stretch")
 
 st.divider()
 
@@ -71,7 +71,7 @@ with right:
         st.dataframe(pd.DataFrame({
             "Date": largest["transaction_date"], "Merchant": largest["merchant"],
             "Category": largest["category"], "Amount": largest["amount_paise"].map(format_inr),
-        }), hide_index=True, use_container_width=True)
+        }), hide_index=True, width="stretch")
 
 st.divider()
 

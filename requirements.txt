@@ -1,5 +1,5 @@
 # Runtime dependencies (bounded to known-compatible major versions)
-streamlit>=1.40,<2
+streamlit>=1.50,<2
 pandas>=2.2,<4
 pdfplumber>=0.11,<0.12
 plotly>=5.24,<8

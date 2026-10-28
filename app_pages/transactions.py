@@ -60,7 +60,7 @@ view = pd.DataFrame({
 edited = st.data_editor(
     view,
     key=f"editor_{page}_{hash(filters)}_{review_only}_{page_size}",
-    use_container_width=True,
+    width="stretch",
     height=min(38 * (len(view) + 1) + 4, 640),
     disabled=["Date", "Merchant", "Amount (₹)", "Method", "Status", "Description"],
     column_config={

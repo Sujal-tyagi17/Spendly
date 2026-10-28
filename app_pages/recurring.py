@@ -54,15 +54,15 @@ for group, title in (({"confirmed", "high_confidence"}, "Detected"), ({"possible
                          f"**{format_inr(c.est_monthly_paise)}/month** (est.)  \n"
                          f"<span style='color:#52514e;font-size:.85rem'>{c.occurrences} payments · last "
                          f"{c.last_payment} · next ≈ {c.next_expected}</span>", unsafe_allow_html=True)
-            if c.status != "confirmed" and right.button("Confirm", key=f"c_{c.merchant}", use_container_width=True):
+            if c.status != "confirmed" and right.button("Confirm", key=f"c_{c.merchant}", width="stretch"):
                 database.set_recurring_decision(conn, c.merchant, "confirmed")
                 st.rerun()
             if c.status != "rejected" and right.button("Not recurring", key=f"r_{c.merchant}",
-                                                       use_container_width=True):
+                                                       width="stretch"):
                 database.set_recurring_decision(conn, c.merchant, "rejected")
                 st.rerun()
             if c.status in {"confirmed", "rejected"} and right.button("Undo", key=f"u_{c.merchant}",
-                                                                       use_container_width=True):
+                                                                       width="stretch"):
                 database.set_recurring_decision(conn, c.merchant, None)
                 st.rerun()
 
@@ -71,4 +71,4 @@ with st.expander("Table view"):
         "Merchant": c.merchant, "Status": STATUS[c.status], "Schedule": c.schedule, "Payments": c.occurrences,
         "Median amount": format_inr(c.median_amount_paise), "Est. monthly": format_inr(c.est_monthly_paise),
         "Est. annual": format_inr(c.est_annual_paise), "Last payment": c.last_payment, "Why": c.rationale,
-    } for c in candidates]), hide_index=True, use_container_width=True)
+    } for c in candidates]), hide_index=True, width="stretch")

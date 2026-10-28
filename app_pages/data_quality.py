@@ -41,7 +41,7 @@ st.dataframe(pd.DataFrame([{
     "Duplicates skipped": s["rows_skipped_duplicates"],
     "Balance mismatches": f"{s['balance_mismatches']}/{s['balance_checked_pairs']}" if s["balance_checked_pairs"] else "n/a",
     "Imported on": s["created_at"][:10],
-} for s in statements]), hide_index=True, use_container_width=True)
+} for s in statements]), hide_index=True, width="stretch")
 
 warnings = [(s["display_name"], w) for s in statements for w in s["warnings"]]
 if warnings:
@@ -57,7 +57,7 @@ st.markdown("### Rows that could not be imported")
 if issues.empty:
     st.success("Every extracted row was readable.")
 else:
-    st.dataframe(issues, hide_index=True, use_container_width=True)
+    st.dataframe(issues, hide_index=True, width="stretch")
 
 left, right = st.columns(2, gap="medium")
 with left:
@@ -69,7 +69,7 @@ with left:
         st.success("None waiting for review.")
     else:
         dups["amount"] = dups.pop("amount_paise").map(format_inr)
-        st.dataframe(dups, hide_index=True, use_container_width=True)
+        st.dataframe(dups, hide_index=True, width="stretch")
         st.caption("Same date, amount and merchant as another row. Identical payments can be genuine (two coffees), "
                    "so nothing is deleted automatically — resolve them on the Transactions page.")
 with right:
@@ -81,7 +81,7 @@ with right:
         st.dataframe(pd.DataFrame({
             "Merchant": unc["merchant"], "Direction": unc["direction"], "Rows": unc["transaction_count"],
             "Total": unc["total_paise"].map(format_inr),
-        }), hide_index=True, use_container_width=True)
+        }), hide_index=True, width="stretch")
         st.caption("Tip: on Transactions, change one row and tick “apply to every transaction from the same merchant”.")
 
 missing = conn.execute(
@@ -98,4 +98,4 @@ st.markdown("### Manual corrections")
 if recent.empty:
     st.caption("No manual corrections yet.")
 else:
-    st.dataframe(recent, hide_index=True, use_container_width=True)
+    st.dataframe(recent, hide_index=True, width="stretch")
