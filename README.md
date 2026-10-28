@@ -431,6 +431,20 @@ Don't upload real statements to a public instance you don't control — run Spen
 
 ---
 
+## Marketing website (`web/`)
+
+A Next.js landing page for Spendly lives in [`web/`](web/README.md). It's fully separate from the
+Python app. Its "Explore Spendly" buttons open the Streamlit app at the URL set in `NEXT_PUBLIC_APP_URL`
+(default `http://localhost:8501`).
+
+```bash
+cd web && npm install && npm run dev   # http://localhost:3000
+```
+
+Deploy it on Vercel with **Root Directory = `web`**. See [web/README.md](web/README.md) for details.
+
+---
+
 ### For interviewers
 `docs/INTERVIEW_GUIDE.md` walks through the design decisions and the questions this project is built to answer.
 
