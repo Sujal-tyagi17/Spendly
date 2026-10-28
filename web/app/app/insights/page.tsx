@@ -1,11 +1,10 @@
 "use client";
 
-import { ArrowDownRight, ArrowRight, ArrowUpRight, CheckCircle2, EyeOff, ScanSearch } from "lucide-react";
+import { ArrowDownRight, ArrowRight, ArrowUpRight } from "lucide-react";
 import { useState } from "react";
 import { ChartContainer, CompareChart, WeekdayChart } from "@/components/app/charts";
+import { AnomalySection } from "@/components/app/anomalies";
 import { NoDataState } from "@/components/app/no-data";
-import { Pill } from "@/components/ui/badges";
-import { Button } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { InsightCard } from "@/components/ui/insight-card";
 import { EmptyState, ErrorState, Skeleton } from "@/components/ui/states";
@@ -19,7 +18,6 @@ export default function InsightsPage() {
   const { meta, refresh, notify } = useApp();
   const { data, error, initialLoading, reload } = useFiltered<InsightsResponse>("/api/insights");
   const openTransactions = useOpenTransactions();
-  const [showReviewed, setShowReviewed] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
 
   if (meta && meta.counts.transactions === 0) return <NoDataState />;
@@ -30,8 +28,6 @@ export default function InsightsPage() {
 
   const comp = data.comparison;
   const cards = data.insights.filter((i) => i.key !== "overall_change" && i.key !== "unusual");
-  const anomalies = data.anomalies.filter((a) => showReviewed || a.review_status === "new");
-  const reviewedCount = data.anomalies.filter((a) => a.review_status !== "new").length;
   const more = data.merchant_changes.filter((m) => m.change_paise > 0).sort((a, b) => b.change_paise - a.change_paise).slice(0, 5);
   const less = data.merchant_changes.filter((m) => m.change_paise < 0).sort((a, b) => a.change_paise - b.change_paise).slice(0, 5);
 
@@ -155,56 +151,7 @@ export default function InsightsPage() {
       </section>
 
       {/* ---------- anomalies */}
-      <section aria-labelledby="unusual-title" className="space-y-4">
-        <SectionHeader id="unusual-title" title="Unusual payments"
-          subtitle="Much larger than your usual amount at the same merchant (or category): above Q3 + 1.5×IQR and at least 2× the median. Unusual doesn't mean fraudulent."
-          action={reviewedCount ? (
-            <Button size="sm" variant="ghost" onClick={() => setShowReviewed((v) => !v)} aria-pressed={showReviewed}>
-              {showReviewed ? "Hide reviewed" : `Show reviewed (${reviewedCount})`}
-            </Button>
-          ) : null} />
-        {anomalies.length === 0 ? (
-          <EmptyState icon={ScanSearch} title="Nothing unusual in this view">
-            No payment stands far above your own history for that merchant or category.
-          </EmptyState>
-        ) : (
-          <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            {anomalies.map((a) => (
-              <li key={a.id}>
-                <Card as="article" className="h-full p-4 sm:p-5">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                      <p className="text-[0.95rem] font-semibold text-fg">{a.merchant}</p>
-                      <p className="text-[0.75rem] text-faint">{fmtDate(a.transaction_date)} · {a.category} · compared with {a.basis === "merchant" ? "this merchant" : "this category"}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="tabular text-lg font-semibold text-fg">{inr(a.amount_paise)}</p>
-                      <Pill tone="warn">{a.ratio_to_median}× median</Pill>
-                    </div>
-                  </div>
-                  <p className="mt-3 text-[0.84rem] leading-relaxed text-fg/80">{a.reason}</p>
-                  <div className="mt-4 flex flex-wrap items-center gap-2">
-                    {a.review_status === "new" ? (
-                      <>
-                        <Button size="sm" onClick={() => review(a.id, "expected")} loading={busyId === a.id}><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />I expected this</Button>
-                        <Button size="sm" variant="ghost" onClick={() => review(a.id, "dismissed")} disabled={busyId === a.id}><EyeOff className="h-3.5 w-3.5" aria-hidden="true" />Dismiss</Button>
-                      </>
-                    ) : <Pill>{a.review_status === "expected" ? "Marked expected" : "Dismissed"}</Pill>}
-                    <Button size="sm" variant="ghost" className="ml-auto" onClick={() => openTransactions({ start: a.transaction_date, end: a.transaction_date, merchants: [a.merchant] })}>
-                      View transaction
-                    </Button>
-                  </div>
-                </Card>
-              </li>
-            ))}
-          </ul>
-        )}
-        {Object.keys(data.anomaly_info.skipped_categories).length ? (
-          <p className="text-[0.78rem] text-faint">
-            Not enough history to check (fewer than 8 payments): {Object.entries(data.anomaly_info.skipped_categories).map(([c, n]) => `${c} (${n})`).join(", ")}.
-          </p>
-        ) : null}
-      </section>
+      <AnomalySection anomalies={data.anomalies} info={data.anomaly_info} busyId={busyId} onReview={review} onOpen={openTransactions} />
     </div>
   );
 }

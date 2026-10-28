@@ -116,6 +116,11 @@ they must only ever hold public URLs. Invalid values fall back to the defaults.
   only possible in My data.
 - **Import:** choose a PDF, read it, review the preview, then import. Nothing is saved before you confirm.
 - **Editing:** single rows, or a whole merchant after a confirmation that shows the exact number of affected rows.
+- **Data Quality** (`/app/quality`) is a scorecard: six dimensions with numerator and denominator (no combined
+  score), findings with severity and links to affected rows, a trend from the second import, and filters by
+  import and issue type. The import preview shows the same validation report before you confirm.
+- **Unusual payments** (Spending Insights) show method, reference distribution, median, deviation and the
+  explanation, with "expected" / "dismiss" reviews and the synthetic evaluation results.
 - **Budget Planner** (`/app/budgets`) has its own month picker instead of the global filters. It covers
   create, edit, delete (with confirmation), copying from the previous month, a drivers panel, and an empty
   state. Status is always shown with text and an icon, not colour alone, and both charts have a table view.

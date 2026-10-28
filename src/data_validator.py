@@ -20,6 +20,8 @@ class BalanceCheck:
     mismatches: int = 0
     order: str | None = None  # "oldest_first" | "newest_first"
     mismatch_rows: list[int] = field(default_factory=list)
+    checked_rows: list[int] = field(default_factory=list)  # rows compared with the row before them
+    repeated_rows_skipped: int = 0
 
     @property
     def available(self) -> bool:
@@ -36,6 +38,11 @@ def _signed(record: NormalizedRecord) -> int:
     return record.amount_paise if record.direction == "credit" else -record.amount_paise
 
 
+def _same_entry(a: NormalizedRecord, b: NormalizedRecord) -> bool:
+    return (a.transaction_date, a.direction, a.amount_paise, a.description, a.balance_paise) == \
+           (b.transaction_date, b.direction, b.amount_paise, b.description, b.balance_paise)
+
+
 def _check_order(records: list[NormalizedRecord]) -> BalanceCheck:
     result = BalanceCheck()
     previous = None
@@ -43,8 +50,14 @@ def _check_order(records: list[NormalizedRecord]) -> BalanceCheck:
         if record.balance_paise is None or record.amount_paise is None or record.direction is None:
             previous = None
             continue
+        if previous is not None and _same_entry(previous, record):
+            # A row repeated verbatim (same balance too) is a re-extracted copy. It is
+            # reported once, as an exact duplicate, not a second time as a balance break.
+            result.repeated_rows_skipped += 1
+            continue
         if previous is not None:
             result.checked_pairs += 1
+            result.checked_rows.append(record.row_number)
             if previous.balance_paise + _signed(record) != record.balance_paise:
                 result.mismatches += 1
                 result.mismatch_rows.append(record.row_number)
@@ -62,6 +75,45 @@ def check_running_balance(records: list[NormalizedRecord]) -> BalanceCheck:
     if not forward.available:
         return forward
     return forward if forward.mismatches <= backward.mismatches else backward
+
+
+@dataclass
+class Reconciliation:
+    """Printed opening balance + credits − debits, compared with the printed closing balance."""
+    opening_paise: int | None
+    closing_paise: int | None
+    credits_paise: int = 0
+    debits_paise: int = 0
+
+    @property
+    def available(self) -> bool:
+        return self.opening_paise is not None and self.closing_paise is not None
+
+    @property
+    def computed_closing_paise(self) -> int | None:
+        return self.opening_paise + self.credits_paise - self.debits_paise if self.available else None
+
+    @property
+    def difference_paise(self) -> int | None:
+        """computed − printed closing; 0 means the extracted rows fully explain the movement."""
+        return self.computed_closing_paise - self.closing_paise if self.available else None
+
+    def as_dict(self) -> dict:
+        return {"available": self.available, "opening_paise": self.opening_paise, "closing_paise": self.closing_paise,
+                "credits_paise": self.credits_paise, "debits_paise": self.debits_paise,
+                "computed_closing_paise": self.computed_closing_paise, "difference_paise": self.difference_paise,
+                "reconciled": None if not self.available else self.difference_paise == 0}
+
+
+def reconcile(rows: list[dict], opening: int | None, closing: int | None) -> Reconciliation:
+    """``rows`` are accepted rows of ONE statement (exact copies within the same file excluded)."""
+    result = Reconciliation(opening, closing)
+    for r in rows:
+        if r["direction"] == "credit":
+            result.credits_paise += r["amount_paise"]
+        else:
+            result.debits_paise += r["amount_paise"]
+    return result
 
 
 @dataclass

@@ -74,6 +74,8 @@ def build_filter_clause(filters: Filters | None) -> tuple[str, dict]:
         "possible_duplicate": "is_possible_duplicate = 1",
         "uncategorized": "categorization_method = 'none'",
         "reviewed": "review_status = 'reviewed'",
+        "balance_mismatch": "balance_check = 'mismatch'",
+        "unknown_merchant": "normalized_merchant = 'Unknown'",
     }
     unknown = set(filters.statuses) - set(status_sql)
     if unknown:

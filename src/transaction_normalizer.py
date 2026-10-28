@@ -100,8 +100,17 @@ def _direction_from_text(text: str | None) -> str | None:
     return None
 
 
+_EMPTY = {"", "-", "--", "—"}
+_ZERO = {"0", "0.0", "0.00"}
+
+
 def _blank(text: str | None) -> bool:
-    return text is None or str(text).strip() in {"", "-", "--", "—", "0", "0.00", "0.0"}
+    """Empty or an explicit zero (a zero in the unused Debit/Credit column is normal)."""
+    return text is None or str(text).strip() in _EMPTY | _ZERO
+
+
+def _is_zero(text: str | None) -> bool:
+    return text is not None and str(text).strip() in _ZERO
 
 
 def normalize_row(row: RawRow, index: int, date_formats: tuple[str, ...] = DEFAULT_DATE_FORMATS) -> NormalizedRecord:
@@ -144,6 +153,9 @@ def normalize_row(row: RawRow, index: int, date_formats: tuple[str, ...] = DEFAU
             direction = _direction_from_text(row.drcr_text) or hint
             if direction is None:
                 issues.append("Amount: cannot tell whether this is a debit or a credit")
+        elif any(_is_zero(t) for t in (row.debit_text, row.credit_text, row.amount_text)):
+            # An explicit 0.00 is a value, not a gap: report it separately from "missing".
+            issues.append("Amount: zero — no money moved")
         else:
             issues.append("Amount: missing")
     except AmountParseError as exc:

@@ -72,8 +72,8 @@ with right:
     st.markdown("#### Key insights")
     recurring = subscription_detector.detect_recurring(
         analytics.recurring_candidates(conn, filters), database.recurring_decisions(conn))
-    anomalies, _ = anomaly_detector.detect_anomalies(analytics.transactions(conn, filters),
-                                                     database.anomaly_reviews(conn))
+    anomalies, _ = anomaly_detector.detect_for_view(analytics.transactions(conn), analytics.transactions(conn, filters),
+                                                    database.anomaly_reviews(conn))
     items = insights.build_insights(conn, filters, recurring, anomalies)
     for item in items:
         ui.insight_block(item.title, item.text, item.tone)

@@ -1,148 +1,251 @@
 "use client";
 
-import { ArrowRight, CheckCircle2, CopyX, FileWarning, Scale, Tags, Wallet } from "lucide-react";
+import { useReducedMotion } from "motion/react";
+import { AlertOctagon, AlertTriangle, ArrowRight, CheckCircle2, Info, MinusCircle } from "lucide-react";
+import { useState } from "react";
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { ChartContainer } from "@/components/app/charts";
 import { NoDataState } from "@/components/app/no-data";
 import { Pill } from "@/components/ui/badges";
 import { Card, SectionHeader } from "@/components/ui/card";
-import { MetricCard } from "@/components/ui/metric-card";
+import { InfoTip } from "@/components/ui/info-tip";
 import { ErrorState, Skeleton } from "@/components/ui/states";
+import { useApi } from "@/lib/api";
 import { fmtDate, inr } from "@/lib/format";
-import { useFiltered, useOpenTransactions } from "@/lib/hooks";
+import { useOpenTransactions } from "@/lib/hooks";
 import { useApp } from "@/lib/store";
-import type { InsightLink, QualityResponse } from "@/lib/types";
+import type { QualityDimension, QualityResponse, Severity } from "@/lib/types";
 
-type Check = {
-  key: string;
-  icon: React.ComponentType<{ className?: string }>;
-  title: string;
-  count: number;
-  ok: string;
-  explain: string;
-  link?: InsightLink;
-  linkLabel?: string;
+const SEVERITY: Record<Severity, { label: string; tone: "neg" | "warn" | "neutral"; icon: typeof Info; text: string }> = {
+  error: { label: "Error", tone: "neg", icon: AlertOctagon, text: "Data was not imported, or totals don't reconcile" },
+  warning: { label: "Warning", tone: "warn", icon: AlertTriangle, text: "Imported, but may be wrong or double-counted: review it" },
+  info: { label: "Info", tone: "neutral", icon: Info, text: "A check couldn't run, or a limitation of the format" },
 };
 
+const selectCls = "h-10 rounded-xl border border-line bg-ink-2 px-3 text-[0.84rem] text-fg";
+const pctText = (v: number | null) => (v === null ? "n/a" : `${v.toFixed(1)}%`);
+
+function SeverityPill({ s }: { s: Severity }) {
+  const m = SEVERITY[s];
+  const Icon = m.icon;
+  return <Pill tone={m.tone}><Icon className="h-3 w-3" aria-hidden="true" />{m.label}</Pill>;
+}
+
+function DimensionCard({ d }: { d: QualityDimension }) {
+  const measurable = d.value_pct !== null;
+  const perfect = d.value_pct === 100;
+  return (
+    <Card as="article" className="flex h-full flex-col p-4 sm:p-5">
+      <p className="eyebrow flex items-center gap-1 text-[0.6rem]">{d.label}<InfoTip label={d.label}>{d.definition}</InfoTip></p>
+      {measurable ? (
+        <>
+          <p className="tabular mt-2 text-[1.9rem] leading-none font-semibold tracking-tight">{pctText(d.value_pct)}</p>
+          <p className="tabular mt-1.5 text-[0.78rem] text-muted">{d.numerator.toLocaleString("en-IN")} of {d.denominator.toLocaleString("en-IN")}</p>
+          <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]" aria-hidden="true">
+            <div className={`h-full rounded-full ${perfect ? "bg-lime-2" : "bg-warn"}`} style={{ width: `${d.value_pct}%` }} />
+          </div>
+        </>
+      ) : (
+        <p className="mt-2 flex items-center gap-1.5 text-[1.05rem] font-semibold text-muted"><MinusCircle className="h-4 w-4" aria-hidden="true" />Not measurable</p>
+      )}
+      {d.note ? <p className="mt-3 text-[0.74rem] leading-relaxed text-faint">{d.note}</p> : null}
+    </Card>
+  );
+}
+
+function TrendChart({ data }: { data: QualityResponse["scorecard"]["trend"] }) {
+  const reduced = useReducedMotion();
+  const rows = data.map((t, i) => ({ name: `#${i + 1}`, Rejected: t.rows_rejected, "Possible duplicates": t.possible_duplicates,
+    "Balance mismatches": t.balance_mismatches, Uncategorised: t.uncategorised }));
+  const colors = ["#ff7a6b", "#f5c451", "#8fb8de", "#56604f"];
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+        <CartesianGrid stroke="#1e261e" vertical={false} />
+        <XAxis dataKey="name" tick={{ fill: "#5f675d", fontSize: 11 }} tickLine={false} axisLine={false} />
+        <YAxis allowDecimals={false} width={36} tick={{ fill: "#5f675d", fontSize: 11 }} tickLine={false} axisLine={false} />
+        <Tooltip cursor={{ fill: "rgb(255 255 255 / 0.03)" }} contentStyle={{ background: "#151b14", border: "1px solid #2a342a", borderRadius: 12, fontSize: 12 }} />
+        <Legend verticalAlign="top" align="right" height={28} formatter={(v) => <span className="text-[0.75rem] text-muted">{v}</span>} />
+        {Object.keys(rows[0] ?? {}).filter((k) => k !== "name").map((k, i) => (
+          <Bar key={k} dataKey={k} fill={colors[i]} radius={[3, 3, 0, 0]} maxBarSize={18} isAnimationActive={!reduced} />
+        ))}
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
 export default function QualityPage() {
-  const { meta } = useApp();
-  const { data, error, initialLoading, reload } = useFiltered<QualityResponse>("/api/quality", {}, false);
+  const { ready, mode, version, meta } = useApp();
+  const [statementId, setStatementId] = useState<string>("");
+  const [issue, setIssue] = useState<string>("");
+  const qs = new URLSearchParams();
+  if (statementId) qs.set("statement_id", statementId);
+  if (issue) qs.set("issue", issue);
+  const { data, error, initialLoading, reload } = useApi<QualityResponse>(ready ? `/api/quality${qs.toString() ? `?${qs}` : ""}` : null, [mode, version]);
   const openTransactions = useOpenTransactions();
 
-  if (meta && meta.counts.transactions === 0) return <NoDataState />;
+  if (meta && meta.counts.transactions === 0 && meta.counts.statements === 0) return <NoDataState />;
   if (error && !data) return <ErrorState message={error.message} onRetry={reload} />;
   if (initialLoading || !data) return <div className="space-y-4" role="status" aria-label="Loading"><Skeleton className="h-32" /><Skeleton className="h-72" /></div>;
 
-  const c = data.counts;
-  const checks: Check[] = [
-    { key: "dups", icon: CopyX, title: "Possible duplicates", count: c.possible_duplicates, ok: "No possible duplicates waiting.",
-      explain: "Same date, amount and merchant as another row, but no running balance or transaction ID to prove it's a copy. Identical payments can be genuine (two coffees), so nothing is removed automatically.",
-      link: { statuses: ["possible_duplicate"] }, linkLabel: "Review duplicates" },
-    { key: "uncat", icon: Tags, title: "Uncategorized transactions", count: c.uncategorized, ok: "Everything has a category.",
-      explain: "No rule matched these merchants (often local shops or people). They count as “Other” until you set a category. One correction can apply to every row from that merchant.",
-      link: { statuses: ["uncategorized"] }, linkLabel: "Categorize" },
-    { key: "review", icon: FileWarning, title: "Rows needing review", count: c.needs_review, ok: "Nothing needs review.",
-      explain: "Includes uncategorized rows, possible duplicates, AI-suggested categories and credits from shops treated as refunds.",
-      link: { statuses: ["needs_review"] }, linkLabel: "Open review list" },
-    { key: "balance", icon: Scale, title: "Running-balance mismatches", count: c.balance_mismatches,
-      ok: c.balance_checked_pairs ? "Every checked row adds up." : "No balance column in your statements, so this couldn't be checked.",
-      explain: `For consecutive rows, previous balance ± amount should equal the printed balance. ${c.balance_mismatches} of ${c.balance_checked_pairs} checked pairs didn't. That usually means a row was mis-read, repeated or is missing.` },
-    { key: "invalid", icon: FileWarning, title: "Rows that couldn't be imported", count: c.rows_invalid, ok: "Every extracted row was readable.",
-      explain: "Rows with a missing or unreadable date, amount or description were left out. Ambiguous dates are never guessed. See the reasons below." },
-    { key: "balance-missing", icon: Wallet, title: "Rows without a running balance", count: c.rows_without_balance, ok: "Every row has a balance.",
-      explain: "Common for UPI app statements. Duplicate detection then relies on transaction IDs, and the balance check can't run." },
-  ];
+  const sc = data.scorecard;
+  const scopeStatement = data.statements.length === 1 && statementId ? data.statements[0] : null;
+  const shownIssues = sc.issues.filter((i) => !issue || i.code === issue);
+  const openFor = (status: string) => openTransactions({
+    statuses: [status],
+    ...(scopeStatement?.statement_period_start ? { start: scopeStatement.statement_period_start, end: scopeStatement.statement_period_end ?? undefined } : {}),
+  });
 
   return (
     <div className="space-y-8">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricCard label="Rows extracted" value={c.rows_extracted.toLocaleString("en-IN")} note={`${data.statements.length} statement${data.statements.length === 1 ? "" : "s"}`}
-          tip="Every row the parser found in your imported files, before validation." />
-        <MetricCard label="Transactions saved" value={c.transactions.toLocaleString("en-IN")} note={`${c.manual_corrections} manual correction${c.manual_corrections === 1 ? "" : "s"}`} />
-        <MetricCard label="Duplicates skipped" value={c.duplicates_skipped.toLocaleString("en-IN")} note="exact copies, not imported"
-          tip="Rows identical to another row including the running balance or transaction ID, for example from overlapping statements." />
-        <MetricCard label="Balance check" value={c.balance_checked_pairs ? `${c.balance_mismatches} / ${c.balance_checked_pairs}` : "n/a"}
-          note={c.balance_checked_pairs ? "mismatches / pairs checked" : "no balance column"}
-          tip="How many consecutive row pairs failed the running-balance check, out of those that could be checked." />
+      {/* ---------- filters */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+        <label className="flex flex-col gap-1 text-[0.74rem] text-muted">Import
+          <select value={statementId} onChange={(e) => setStatementId(e.target.value)} className={selectCls}>
+            <option value="">All imports ({data.all_statements.length})</option>
+            {data.all_statements.map((s) => <option key={s.id} value={s.id}>{s.display_name}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-[0.74rem] text-muted">Issue type
+          <select value={issue} onChange={(e) => setIssue(e.target.value)} className={selectCls}>
+            <option value="">All issue types</option>
+            {data.issue_types.map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
+          </select>
+        </label>
+        <p className="text-[0.74rem] leading-relaxed text-faint sm:ml-auto sm:max-w-sm sm:text-right">
+          Every figure is a count from the import validation, or a ratio of two counts. There&apos;s no combined score:
+          each dimension measures something different.
+        </p>
       </div>
 
-      <section aria-labelledby="checks-title" className="space-y-4">
-        <SectionHeader id="checks-title" title="Checks" subtitle="Every count comes from the import validation. Nothing here is an estimate." />
-        <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          {checks.map((k) => {
-            const Icon = k.icon;
-            const clean = k.count === 0;
-            return (
-              <li key={k.key}>
+      {/* ---------- dimensions */}
+      <section aria-labelledby="dims-title" className="space-y-4">
+        <SectionHeader id="dims-title" title="Quality dimensions"
+          subtitle={`${sc.scope.statements} import${sc.scope.statements === 1 ? "" : "s"} · ${sc.scope.transactions.toLocaleString("en-IN")} saved transactions. Hover ⓘ for the exact formula.`} />
+        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {sc.dimensions.map((d) => <li key={d.key}><DimensionCard d={d} /></li>)}
+        </ul>
+      </section>
+
+      {/* ---------- breakdown */}
+      <section aria-labelledby="issues-title" className="space-y-4">
+        <SectionHeader id="issues-title" title="Validation findings" subtitle="What was found at import, how many saved rows still carry the flag, and what it means." />
+        <div className="flex flex-wrap gap-x-5 gap-y-2 text-[0.74rem] text-faint">
+          {(Object.keys(SEVERITY) as Severity[]).map((s) => <span key={s} className="flex items-center gap-2"><SeverityPill s={s} />{SEVERITY[s].text}</span>)}
+        </div>
+        {shownIssues.length === 0 ? (
+          <Card className="flex items-center gap-3 p-5 text-[0.88rem] text-fg/85">
+            <CheckCircle2 className="h-5 w-5 text-pos" aria-hidden="true" />
+            {issue ? "No findings of this type in the selected imports." : "No validation findings in the selected imports."}
+          </Card>
+        ) : (
+          <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            {shownIssues.map((i) => (
+              <li key={i.code}>
                 <Card as="article" className="flex h-full flex-col p-4 sm:p-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <h3 className="flex items-center gap-2.5 text-[0.95rem] font-semibold text-fg">
-                      <Icon className={`h-4 w-4 ${clean ? "text-pos" : "text-warn"}`} aria-hidden="true" />{k.title}
-                    </h3>
-                    {clean ? <Pill tone="pos"><CheckCircle2 className="h-3 w-3" aria-hidden="true" />OK</Pill>
-                      : <Pill tone="warn"><span className="tabular">{k.count}</span> to check</Pill>}
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <h3 className="text-[0.95rem] font-semibold text-fg">{i.label}</h3>
+                    <SeverityPill s={i.severity} />
                   </div>
-                  <p className="mt-2.5 flex-1 text-[0.84rem] leading-relaxed text-muted">{clean ? k.ok : k.explain}</p>
-                  {!clean && k.link ? (
-                    <button type="button" onClick={() => openTransactions(k.link!)}
+                  <p className="tabular mt-2 text-[0.82rem] text-muted">
+                    {i.count.toLocaleString("en-IN")} {i.unit === "statement" ? `import${i.count === 1 ? "" : "s"}` : `row${i.count === 1 ? "" : "s"}`} at import
+                    {i.current_count !== null ? <> · <span className="text-fg/85">{i.current_count.toLocaleString("en-IN")} still flagged</span></> : null}
+                    <span className="text-faint"> · {i.dimension}</span>
+                  </p>
+                  <p className="mt-2 flex-1 text-[0.84rem] leading-relaxed text-fg/80">{i.implication}</p>
+                  {i.status_filter && (i.current_count ?? 0) > 0 ? (
+                    <button type="button" onClick={() => openFor(i.status_filter!)}
                       className="group mt-3 inline-flex items-center gap-1 self-start rounded-lg px-1.5 py-1 text-[0.8rem] font-medium text-lime hover:bg-lime/10">
-                      {k.linkLabel} <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+                      Show affected transactions <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
                     </button>
                   ) : null}
                 </Card>
               </li>
-            );
-          })}
-        </ul>
+            ))}
+          </ul>
+        )}
       </section>
 
+      {/* ---------- trend */}
+      {sc.trend_available && !statementId ? (
+        <ChartContainer title="Issues by import" subtitle="One group per import, oldest first. Counts at the time of import."
+          table={{ columns: ["Import", "Extracted", "Rejected", "Possible duplicates", "Balance mismatches", "Uncategorised", "Completeness"],
+            rows: sc.trend.map((t, n) => [`#${n + 1} ${t.display_name}`, t.rows_extracted, t.rows_rejected, t.possible_duplicates,
+              t.balance_mismatches, t.uncategorised, pctText(t.completeness_pct)]) }}>
+          <TrendChart data={sc.trend} />
+        </ChartContainer>
+      ) : (
+        <p className="flex items-start gap-2 text-[0.8rem] text-faint"><Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          {statementId ? "Showing one import, so there's no trend." : "A trend across imports appears from your second import. Nothing is simulated before then."}</p>
+      )}
+
+      {/* ---------- rejected rows */}
       {data.issues.length ? (
-        <section aria-labelledby="issues-title" className="space-y-4">
-          <SectionHeader id="issues-title" title="Rows that couldn't be imported"
-            subtitle={data.issue_breakdown.map((b) => `${b.kind}: ${b.count}`).join(" · ")} />
+        <section aria-labelledby="rows-title" className="space-y-4">
+          <SectionHeader id="rows-title" title={`Rows that weren't imported (${data.issues.length})`}
+            subtitle={data.issue_breakdown.map((b) => `${b.label}: ${b.count}`).join(" · ")} />
           <Card className="overflow-x-auto">
-            <table className="w-full min-w-[560px] text-left text-[0.82rem]">
+            <table className="w-full min-w-[620px] text-left text-[0.82rem]">
               <thead className="border-b border-line text-[0.72rem] text-muted"><tr>
-                <th scope="col" className="px-4 py-3 font-medium">Statement</th><th scope="col" className="px-4 py-3 font-medium">Page</th>
-                <th scope="col" className="px-4 py-3 font-medium">Row</th><th scope="col" className="px-4 py-3 font-medium">Reason</th></tr></thead>
+                {["Import", "Page", "Row", "Issue", "Details"].map((h) => <th key={h} scope="col" className="px-4 py-3 font-medium">{h}</th>)}
+              </tr></thead>
               <tbody>{data.issues.map((i, n) => (
                 <tr key={n} className="border-b border-line/60 last:border-0">
-                  <td className="px-4 py-2.5 text-fg">{i.statement}</td><td className="tabular px-4 py-2.5 text-muted">{i.page ?? "—"}</td>
-                  <td className="tabular px-4 py-2.5 text-muted">{i.row_number ?? "—"}</td><td className="px-4 py-2.5 text-fg/85">{i.reason}</td>
+                  <td className="px-4 py-2.5 text-fg">{i.statement}</td>
+                  <td className="tabular px-4 py-2.5 text-muted">{i.page ?? "—"}</td>
+                  <td className="tabular px-4 py-2.5 text-muted">{i.row_number ?? "—"}</td>
+                  <td className="px-4 py-2.5"><span className="flex flex-wrap items-center gap-2"><SeverityPill s={i.severity} /><span className="text-fg/90">{i.label}</span></span></td>
+                  <td className="px-4 py-2.5 text-fg/75">{i.reason}</td>
                 </tr>))}</tbody>
             </table>
           </Card>
         </section>
       ) : null}
 
+      {/* ---------- per-import reports */}
       <section aria-labelledby="statements-title" className="space-y-4">
-        <SectionHeader id="statements-title" title="Imported statements" />
+        <SectionHeader id="statements-title" title="Import reports"
+          subtitle="Extracted = rejected + accepted; accepted = imported + exact duplicates skipped. Flags overlap, so they aren't added up." />
         <Card className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-[0.82rem]">
+          <table className="w-full min-w-[900px] text-left text-[0.82rem]">
             <thead className="border-b border-line text-[0.72rem] text-muted"><tr>
-              {["Statement", "Format", "Period", "Extracted", "Imported", "Invalid", "Duplicates skipped", "Balance check", "Imported on"].map((h, i) => (
-                <th key={h} scope="col" className={`px-4 py-3 font-medium ${i >= 3 && i <= 7 ? "text-right" : ""}`}>{h}</th>))}
+              {["Import", "Period", "Extracted", "Rejected", "Accepted", "Duplicates skipped", "Possible dup.", "Balance check", "Reconciliation", "Imported on"].map((h, i) => (
+                <th key={h} scope="col" className={`px-4 py-3 font-medium ${i >= 2 && i <= 6 ? "text-right" : ""}`}>{h}</th>))}
             </tr></thead>
-            <tbody>{data.statements.map((s) => (
-              <tr key={s.id} className="border-b border-line/60 align-top last:border-0">
-                <td className="px-4 py-3 text-fg">{s.display_name}
-                  {s.warnings.length ? <ul className="mt-1 space-y-0.5 text-[0.72rem] text-warn">{s.warnings.map((w) => <li key={w}>{w}</li>)}</ul> : null}</td>
-                <td className="px-4 py-3 text-muted">{s.parser_name}</td>
-                <td className="px-4 py-3 whitespace-nowrap text-muted">{fmtDate(s.statement_period_start)} – {fmtDate(s.statement_period_end)}</td>
-                <td className="tabular px-4 py-3 text-right">{s.rows_extracted}</td>
-                <td className="tabular px-4 py-3 text-right">{s.rows_imported}</td>
-                <td className="tabular px-4 py-3 text-right">{s.rows_invalid}</td>
-                <td className="tabular px-4 py-3 text-right">{s.rows_skipped_duplicates}</td>
-                <td className="tabular px-4 py-3 text-right">{s.balance_checked_pairs ? `${s.balance_mismatches}/${s.balance_checked_pairs}` : "n/a"}</td>
-                <td className="px-4 py-3 whitespace-nowrap text-muted">{fmtDate(s.created_at.slice(0, 10))}</td>
-              </tr>))}</tbody>
+            <tbody>{data.statements.map((s) => {
+              const r = s.quality_report;
+              const rec = r?.reconciliation;
+              return (
+                <tr key={s.id} className="border-b border-line/60 align-top last:border-0">
+                  <td className="px-4 py-3 text-fg">{s.display_name}<span className="block text-[0.7rem] text-faint">{s.parser_name}</span>
+                    {s.warnings.length ? <ul className="mt-1 space-y-0.5 text-[0.72rem] text-warn">{s.warnings.map((w) => <li key={w}>{w}</li>)}</ul> : null}</td>
+                  <td className="px-4 py-3 whitespace-nowrap text-muted">{fmtDate(s.statement_period_start)} – {fmtDate(s.statement_period_end)}</td>
+                  <td className="tabular px-4 py-3 text-right">{s.rows_extracted}</td>
+                  <td className="tabular px-4 py-3 text-right">{r ? r.rows_rejected : s.rows_invalid}</td>
+                  <td className="tabular px-4 py-3 text-right">{r ? r.rows_accepted : "—"}</td>
+                  <td className="tabular px-4 py-3 text-right">{s.rows_skipped_duplicates}</td>
+                  <td className="tabular px-4 py-3 text-right">{r ? r.flags.possible_duplicates : "—"}</td>
+                  <td className="tabular px-4 py-3">{s.balance_checked_pairs ? `${s.balance_mismatches} of ${s.balance_checked_pairs} pairs off` : "no balance column"}</td>
+                  <td className="tabular px-4 py-3">{!rec || !rec.available ? <span className="text-faint">balances not printed</span>
+                    : rec.reconciled ? <span className="text-pos">reconciled</span>
+                    : <span className="text-neg">off by {inr(Math.abs(rec.difference_paise ?? 0), { decimals: true })}</span>}</td>
+                  <td className="px-4 py-3 whitespace-nowrap text-muted">{fmtDate(s.created_at.slice(0, 10))}</td>
+                </tr>
+              );
+            })}</tbody>
           </table>
         </Card>
+        <p className="text-[0.74rem] leading-relaxed text-faint">
+          These figures describe your data. How accurately the PDF parsers read statements is measured separately on
+          synthetic test statements (see docs/PARSER_EVALUATION.md), and no claim is made about real-world parser accuracy.
+        </p>
       </section>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <section aria-labelledby="uncat-title" className="space-y-4">
-          <SectionHeader id="uncat-title" title="Uncategorized merchants" subtitle="Fix one row and apply it to the whole merchant" />
+          <SectionHeader id="uncat-title" title="Uncategorised merchants" subtitle="Fix one row and apply it to the whole merchant" />
           <Card className="p-2">
-            {data.uncategorized.length === 0 ? <p className="p-3 text-[0.84rem] text-muted">Everything is categorized.</p> : (
+            {data.uncategorized.length === 0 ? <p className="p-3 text-[0.84rem] text-muted">Everything is categorised.</p> : (
               <ul className="divide-y divide-line/60">{data.uncategorized.map((u) => (
                 <li key={u.merchant + u.direction}>
                   <button type="button" onClick={() => openTransactions({ merchants: [u.merchant] })}

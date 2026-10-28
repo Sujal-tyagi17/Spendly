@@ -24,3 +24,6 @@ venv/
 # Never commit real statements
 uploads/
 *.real.pdf
+
+# Consented real statements for local parser evaluation only
+data/parser_eval/

@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS statements (
     balance_checked_pairs   INTEGER NOT NULL DEFAULT 0,
     balance_mismatches      INTEGER NOT NULL DEFAULT 0,
     warnings                TEXT NOT NULL DEFAULT '[]',   -- JSON list
+    quality_report          TEXT,                         -- JSON import validation report (counts only)
     created_at              TEXT NOT NULL
 );
 
@@ -66,6 +67,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     is_transfer           INTEGER NOT NULL DEFAULT 0,
     is_possible_duplicate INTEGER NOT NULL DEFAULT 0,
     balance_paise         INTEGER,
+    balance_check         TEXT,                          -- ok | mismatch | NULL (not checkable)
     fingerprint           TEXT NOT NULL,
     source_statement_id   INTEGER NOT NULL REFERENCES statements(id) ON DELETE CASCADE,
     created_at            TEXT NOT NULL,
@@ -155,8 +157,24 @@ def connect_mode(mode: str) -> sqlite3.Connection:
     return connect(config.db_path(mode))
 
 
+# Columns added after the first release: (table, column, definition).
+_MIGRATIONS = [
+    ("statements", "quality_report", "TEXT"),
+    ("transactions", "balance_check", "TEXT"),
+]
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Add new columns to databases created by an older version (data is kept)."""
+    for table, column, definition in _MIGRATIONS:
+        existing = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}  # noqa: S608 - fixed names
+        if column not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
+    _migrate(conn)
     with transaction(conn):
         conn.executemany(
             "INSERT OR IGNORE INTO categories (category_name) VALUES (?)",
@@ -187,15 +205,17 @@ def insert_statement(conn: sqlite3.Connection, *, display_name: str, file_hash: 
                      parser_name: str, period_start: str | None, period_end: str | None,
                      rows_extracted: int, rows_imported: int, rows_invalid: int,
                      rows_skipped_duplicates: int, balance_checked_pairs: int,
-                     balance_mismatches: int, warnings: list[str]) -> int:
+                     balance_mismatches: int, warnings: list[str], quality_report: dict | None = None) -> int:
     cur = conn.execute(
         """INSERT INTO statements (display_name, file_hash, parser_name, statement_period_start,
                statement_period_end, processing_status, rows_extracted, rows_imported, rows_invalid,
-               rows_skipped_duplicates, balance_checked_pairs, balance_mismatches, warnings, created_at)
-           VALUES (?, ?, ?, ?, ?, 'imported', ?, ?, ?, ?, ?, ?, ?, ?)""",
+               rows_skipped_duplicates, balance_checked_pairs, balance_mismatches, warnings, quality_report,
+               created_at)
+           VALUES (?, ?, ?, ?, ?, 'imported', ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (display_name, file_hash, parser_name, period_start, period_end, rows_extracted,
          rows_imported, rows_invalid, rows_skipped_duplicates, balance_checked_pairs,
-         balance_mismatches, json.dumps(warnings), now_iso()),
+         balance_mismatches, json.dumps(warnings), json.dumps(quality_report) if quality_report else None,
+         now_iso()),
     )
     return int(cur.lastrowid)
 
@@ -206,6 +226,7 @@ def list_statements(conn: sqlite3.Connection) -> list[dict]:
     for row in rows:
         item = dict(row)
         item["warnings"] = json.loads(item.get("warnings") or "[]")
+        item["quality_report"] = json.loads(item["quality_report"]) if item.get("quality_report") else None
         result.append(item)
     return result
 
@@ -230,7 +251,9 @@ TRANSACTION_COLUMNS = (
     "transaction_date", "description", "normalized_merchant", "amount_paise", "direction",
     "transaction_type", "category", "categorization_method", "review_status", "review_reason",
     "is_transfer", "is_possible_duplicate", "balance_paise", "fingerprint", "source_statement_id",
+    "balance_check",
 )
+_OPTIONAL_COLUMNS = {"balance_check"}
 
 
 def insert_transactions(conn: sqlite3.Connection, rows: list[dict]) -> int:
@@ -238,7 +261,7 @@ def insert_transactions(conn: sqlite3.Connection, rows: list[dict]) -> int:
     placeholders = ", ".join("?" for _ in TRANSACTION_COLUMNS)
     sql = (f"INSERT INTO transactions ({', '.join(TRANSACTION_COLUMNS)}, created_at, updated_at) "
            f"VALUES ({placeholders}, ?, ?)")
-    conn.executemany(sql, [tuple(row[c] for c in TRANSACTION_COLUMNS) + (stamp, stamp) for row in rows])
+    conn.executemany(sql, [tuple(row.get(c) if c in _OPTIONAL_COLUMNS else row[c] for c in TRANSACTION_COLUMNS) + (stamp, stamp) for row in rows])
     return len(rows)
 
 

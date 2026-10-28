@@ -13,7 +13,7 @@ import { UploadDropzone } from "@/components/ui/upload-dropzone";
 import { ApiError, apiSend, apiUpload, downloadFile } from "@/lib/api";
 import { fmtDate, inr, TYPE_LABELS } from "@/lib/format";
 import { useApp } from "@/lib/store";
-import type { CommitResult, ImportPreview, PreviewRow } from "@/lib/types";
+import type { CommitResult, ImportPreview, ImportReport, PreviewRow } from "@/lib/types";
 
 const STEPS = ["Choose PDF", "Read & check", "Review preview", "Import"] as const;
 
@@ -249,6 +249,8 @@ function ImportFlow() {
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warn" aria-hidden="true" />{w}</li>))}</ul>
           ) : null}
 
+          <ValidationReport report={preview.report} />
+
           <div className="flex flex-wrap items-center justify-between gap-3">
             <label className="flex items-center gap-2 text-[0.84rem] text-muted">
               <input type="checkbox" checked={onlyWarnings} onChange={(e) => setOnlyWarnings(e.target.checked)} className="h-4 w-4 accent-[#c6ff5e]" />
@@ -390,6 +392,33 @@ function Settings() {
         </label>
       </ConfirmDialog>
     </div>
+  );
+}
+
+/** Structured validation report for this import (computed by the API; shown as-is). */
+function ValidationReport({ report: r }: { report: ImportReport }) {
+  const rejected = r.issues.filter((i) => i.code in r.rejected_by_reason);
+  const rec = r.reconciliation;
+  const items: [string, string][] = [
+    ["Extracted", `${r.rows_extracted} rows`],
+    ["Rejected", rejected.length ? rejected.map((i) => `${i.label} ${i.count}`).join(", ") : "none"],
+    ["Accepted", `${r.rows_accepted} = ${r.rows_to_import} to import + ${r.exact_duplicates_skipped} exact duplicate${r.exact_duplicates_skipped === 1 ? "" : "s"}`],
+    ["Possible duplicates", `${r.flags.possible_duplicates} (imported and flagged)`],
+    ["Uncategorised", String(r.flags.uncategorised)],
+    ["Running balance", r.balance_check.available ? `${r.balance_check.mismatches} of ${r.balance_check.checked_pairs} pairs don't add up` : "no balance column: not checkable"],
+    ["Opening → closing", !rec.available ? "balances not printed: not checkable"
+      : rec.reconciled ? `reconciles (${inr(rec.opening_paise, { decimals: true })} → ${inr(rec.closing_paise, { decimals: true })})`
+      : `off by ${inr(Math.abs(rec.difference_paise ?? 0), { decimals: true })}`],
+  ];
+  return (
+    <details className="rounded-xl border border-line bg-ink-2/60 p-3 text-[0.82rem]" open={r.rows_rejected > 0 || rec.reconciled === false}>
+      <summary className="cursor-pointer text-fg">Validation report</summary>
+      <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-2">
+        {items.map(([k, v]) => (
+          <div key={k} className="flex flex-col"><dt className="text-[0.72rem] text-faint">{k}</dt><dd className="tabular text-fg/90">{v}</dd></div>
+        ))}
+      </dl>
+    </details>
   );
 }
 

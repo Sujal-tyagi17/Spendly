@@ -77,13 +77,13 @@ st.divider()
 
 # ---- 3. Unusual payments
 st.markdown("### Unusual payments")
-st.caption("Flagged when a payment is far above your usual amount at the same merchant (or, if there isn't "
-           "enough history, in the same category): above Q3 + 1.5 × IQR **and** at least 2× the median. "
+st.caption("Flagged when a payment is far above your EARLIER payments at the same merchant (or, if there isn't "
+           "enough history, in the same category): robust z-score ≥ 3.5 **and** at least 2× the median. "
            "Unusual ≠ fraudulent — it's a prompt to take a look.")
 show_reviewed = st.toggle("Show reviewed alerts")
 txns = ui.safe_query(analytics.transactions, conn, filters)
-flagged, info = anomaly_detector.detect_anomalies(txns, database.anomaly_reviews(conn),
-                                                  include_reviewed=show_reviewed)
+flagged, info = anomaly_detector.detect_for_view(analytics.transactions(conn), txns, database.anomaly_reviews(conn),
+                                                 include_reviewed=show_reviewed)
 if flagged.empty:
     st.success("Nothing unusual in the current view.")
 else:

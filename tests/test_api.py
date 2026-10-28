@@ -143,7 +143,7 @@ def test_insights_recurring_quality(client):
     assert next(c for c in rec["candidates"] if c["merchant"] == "Netflix")["status"] == "rejected"
 
     q = client.get("/api/quality", headers=DEMO).json()
-    assert q["counts"]["duplicates_skipped"] == 1 and q["counts"]["balance_mismatches"] == 1
+    assert q["counts"]["duplicates_skipped"] == 1 and q["counts"]["balance_mismatches"] == 0
     assert q["counts"]["possible_duplicates"] == 1
 
 

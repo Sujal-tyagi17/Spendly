@@ -65,12 +65,26 @@ class RecurringSettings:
 
 @dataclass(frozen=True)
 class AnomalySettings:
-    min_observations: int = 8
+    """See src/anomaly_detector.py and docs/ANOMALY_EVALUATION.md. The defaults were fixed
+    before evaluation (z ≥ 3.5 is Iglewicz & Hoaglin's standard cut-off; 2 × median and
+    Q3 + 1.5 × IQR come from the earlier version). A grid search on the tuning half did NOT
+    beat them on the held-out half, so they were kept."""
+    method: str = os.getenv("SPENDLY_ANOMALY_METHOD", "robust_z_prior")
+    min_observations: int = 8           # earlier payments needed in a category
+    merchant_min_observations: int = 5  # earlier payments needed at a merchant
+    merchant_guard_min: int = 1         # see "merchant-consistency guard" in anomaly_detector
     iqr_multiplier: float = 1.5
-    # A flagged amount must also be at least this many times the median, so
-    # that tiny categories with very tight spreads don't flag ₹20 differences.
+    z_threshold: float = 3.5            # Iglewicz & Hoaglin's usual cut-off for robust z
+    # A flagged amount must also be at least this many times the median, so that
+    # tight distributions (metro rides) don't flag ₹20 differences.
     min_ratio_to_median: float = 2.0
-    merchant_min_observations: int = 5
+    # "rule" baseline only: hand-set per-category thresholds in rupees.
+    rule_default_threshold: int = 5000
+    rule_thresholds: dict = field(default_factory=lambda: {
+        "Food & Dining": 2000, "Groceries": 4000, "Transport": 2500, "Shopping": 10000,
+        "Entertainment": 2500, "Subscriptions": 2000, "Bills & Utilities": 5000, "Rent & Housing": 40000,
+        "Healthcare": 5000, "Travel": 15000, "Education": 20000, "Other": 5000,
+    })
 
 
 @dataclass(frozen=True)

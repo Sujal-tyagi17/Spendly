@@ -112,10 +112,12 @@ the median for high confidence, 30% for possible)? Each subscription shows its r
 reject it, and the cost is labelled as an estimate.
 
 **17. How did you detect anomalies? Why not machine learning?**
-I used Tukey's rule: a payment is flagged when it's above Q3 + 1.5×IQR **and** at least 2× the median of
-similar payments. "Similar" means the same merchant if it has enough history, otherwise the same category. It's
-explainable, it works on small data, and it doesn't need training data that a single user doesn't have. Groups
-with fewer than 8 payments are skipped. "Unusual" is never presented as fraud.
+Each expense is compared with the user's *earlier* payments: the same merchant if it has 5 earlier payments,
+otherwise the same category if it has 8. It's flagged when the robust z-score (median and MAD instead of mean and
+standard deviation) is at least 3.5 **and** the amount is at least 2× the median. With too little history a payment
+isn't checked at all. I evaluated it on labelled synthetic data against a threshold rule and two IQR variants, using
+a temporal split. ML (Isolation Forest) wasn't justified: there's one feature per group, no real labels, and it
+can't explain a flag. "Unusual" is never presented as fraud.
 
 ## Engineering
 
@@ -216,7 +218,43 @@ A test checks that, for every demo month, each category's actual equals `categor
 equals `totals` for the same dates. Python rounds percentages half away from zero, like SQLite's `ROUND`,
 because an early test caught 148.25 showing as 148.3 in SQL and 148.2 in Python.
 
+## Data quality and anomaly evaluation
+
+**36. Why not one overall data-quality score?**
+Completeness, validity, uniqueness, balance consistency, categorisation and reconciliation have different
+denominators (rows, complete rows, pairs, statements) and different fixes. An average would hide which one is
+weak. Each is shown separately as numerator / denominator, and is "n/a" rather than 100% when nothing could be measured.
+
+**37. Why is validity measured on complete rows only?**
+So a row missing its date isn't counted as a failure twice, once for completeness and once for validity. That keeps
+the dimensions independent, and the rejected-row counts add up to the total.
+
+**38. What's the difference between parser accuracy and data quality?**
+Parser accuracy compares what was extracted with what is printed (ground-truth fixtures, rows aligned in order).
+Data quality asks whether the extracted data is complete and consistent. My synthetic fixtures score 100% on
+parsing, which only shows the parsers handle the layouts they were built for. I don't claim real-world accuracy
+until real statements are tested.
+
+**39. What was wrong with the old anomaly detector?**
+It computed quartiles over the whole filtered history, including later payments and the payment itself. So
+March was judged with September's data, and the answer changed with the date filter. Now only earlier payments
+are used. A test adds future payments and checks the verdict on an earlier one doesn't move.
+
+**40. What did the evaluation show?**
+On the held-out half: robust z had precision 0.79, recall 0.77 and F1 0.78, against 0.75 for both IQR versions
+and 0.43 for a category-threshold rule. Over 5 other seeds it was 0.77 ± 0.03 vs 0.74. That's a small gain, about
+one standard deviation. Tuning on the first half overfit and lowered test recall, so I kept the textbook defaults.
+Known misses: unusually small payments. Known false alarms: genuine big purchases. That's why flags can be marked "expected".
+
+**41. Why a robust z-score instead of a normal z-score?**
+The mean and standard deviation are pulled by the very outliers you're looking for. The median and MAD aren't. When
+MAD is 0 (e.g. identical subscription charges) it falls back to the mean absolute deviation. If every earlier
+payment was identical, only the "≥ 2× median" rule decides.
+
 ## Numbers worth knowing (demo data)
 - 285 synthetic rows, April–September 2026. One exact duplicate is skipped, so 284 are imported.
-- The August spike comes from a ₹54,999 laptop. It's flagged as unusual at 28× the usual Amazon payment.
+- The August spike comes from a ₹54,999 laptop. It's flagged as unusual at 29.8× the median of the 11 earlier Shopping
+  payments (robust z 116). Amazon itself had too few earlier payments to be the yardstick.
+- Demo data quality: completeness 100%, uniqueness 99.6% (1 verbatim copy of 285), balance consistency 100%,
+  categorisation coverage 91.5% (260 of 284), reconciliation n/a (the demo CSV prints no opening/closing balance).
 - 6 high-confidence recurring payments cost about ₹21,190 a month (estimated).

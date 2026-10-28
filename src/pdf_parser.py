@@ -81,6 +81,9 @@ class ParseResult:
     period_end: str | None = None
     page_count: int = 0
     warnings: list[str] = field(default_factory=list)
+    # Printed on the statement (never derived from the rows), when the layout shows them.
+    opening_balance_paise: int | None = None
+    closing_balance_paise: int | None = None
 
 
 def file_sha256(data: bytes) -> str:
@@ -160,6 +163,26 @@ def find_period(text: str, formats: tuple[str, ...]) -> tuple[str | None, str | 
             if start <= end:
                 return start.isoformat(), end.isoformat()
     return None, None
+
+
+_REPORTED_BALANCE = re.compile(
+    r"\b(?P<kind>opening|closing)\s+balance\b[^\d\n-]{0,24}(?P<sign>-)?(?P<value>\d[\d,]*\.\d{1,2})\s*(?P<drcr>dr|cr)?\b",
+    re.IGNORECASE)
+
+
+def find_reported_balances(text: str) -> tuple[int | None, int | None]:
+    """Opening and closing balances *printed* on the statement, in paise.
+    Only an explicit "Opening/Closing Balance <number>" counts; nothing is inferred."""
+    found: dict[str, int] = {}
+    for match in _REPORTED_BALANCE.finditer(text or ""):
+        kind = match.group("kind").lower()
+        if kind in found:
+            continue
+        paise = int(round(float(match.group("value").replace(",", "")) * 100))
+        if match.group("sign") or (match.group("drcr") or "").lower() == "dr":
+            paise = -paise
+        found[kind] = paise
+    return found.get("opening"), found.get("closing")
 
 
 def _cell(value) -> str:
@@ -290,8 +313,9 @@ class BankTableParser(StatementParser):
         if continuation_lines:
             warnings.append(f"Joined {continuation_lines} wrapped description line(s) to the row above.")
         start, end = find_period(document.full_text, self.date_formats)
+        opening, closing = find_reported_balances(document.full_text)
         return ParseResult(self.name, self.label, rows, self.date_formats, start, end,
-                           len(document.pdf.pages), warnings)
+                           len(document.pdf.pages), warnings, opening, closing)
 
 
 class PhonePeParser(StatementParser):

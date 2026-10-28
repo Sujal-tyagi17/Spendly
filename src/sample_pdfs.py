@@ -38,7 +38,8 @@ def _rupee_font() -> tuple[str, str]:
 
 
 def bank_statement_pdf(rows: list[dict], *, period: tuple[date, date] | None = None,
-                       account_holder: str = "DEMO USER", wrap_first_description: bool = False) -> bytes:
+                       account_holder: str = "DEMO USER", wrap_first_description: bool = False,
+                       opening_balance: int | None = None, closing_balance: int | None = None) -> bytes:
     """rows: dicts with date (date), description, debit/credit/balance (paise or None)."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, leftMargin=12 * mm, rightMargin=12 * mm,
@@ -52,6 +53,10 @@ def bank_statement_pdf(rows: list[dict], *, period: tuple[date, date] | None = N
         story.append(Paragraph(
             f"Statement Period: {period[0].strftime('%d %b %Y')} to {period[1].strftime('%d %b %Y')}",
             styles["Normal"]))
+    if opening_balance is not None:
+        story.append(Paragraph(f"Opening Balance: {opening_balance / 100:,.2f}", styles["Normal"]))
+    if closing_balance is not None:
+        story.append(Paragraph(f"Closing Balance: {closing_balance / 100:,.2f}", styles["Normal"]))
     story.append(Spacer(1, 6 * mm))
 
     def money(p):

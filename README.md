@@ -42,6 +42,7 @@ money in JavaScript.
 8. [Database schema](#13-database-schema) · 9. [Supported PDF formats](#14-supported-pdf-formats) ·
 10. [Analytics methodology & metric definitions](#16-analytics-methodology) · 11. [SQL concepts](#17-sql-concepts-demonstrated) ·
 12. [Recurring payments](#18-recurring-payment-detection) · 13. [Anomaly detection](#19-anomaly-detection) ·
+[Data-quality scorecard](#data-quality-scorecard) ·
 14. [Privacy](#20-privacy-and-security) · 15. [Optional AI](#21-optional-ai-setup) · 16. [Deployment](#22-deployment) ·
 17. [Limitations](#23-known-limitations) · 18. [Future work](#24-future-improvements) ·
 19. [Budget Planner](#budget-planner)
@@ -76,10 +77,11 @@ visibly flagged for review.
 | **Spending intelligence** | "Your expenditure increased by 18%… Food & Dining contributed the largest share" — computed from equal-length periods (partial months compared fairly), with safe zero-denominator handling. |
 | **Recurring payments** | Interval + amount-stability detection (weekly / monthly / quarterly / yearly), confidence levels, rationale, estimated monthly/annual cost, "may have been cancelled" hints, confirm/reject controls. |
 | **Budget Planner** | Monthly budgets per category plus an overall budget: budget vs actual, utilisation, variance, status, copy from the previous month, a drivers panel, and observed insights kept separate from a clearly labelled pace estimate. Partial and missing months are handled honestly. |
-| **Anomalies** | Interpretable IQR rule against the same merchant's or category's history, with a plain-English reason. Never labelled fraud. Dismiss / mark expected. |
+| **Anomalies** | Robust z-score against the user's *earlier* payments at the same merchant or category (no look-ahead), with a plain-English reason. Evaluated against labelled synthetic data and compared with three baselines. Never labelled fraud. Dismiss / mark expected. |
+| **Data-quality scorecard** | Six separately reported dimensions (completeness, validity, uniqueness, running-balance consistency, categorisation coverage, opening/closing reconciliation), a structured report per import, severity levels, links to affected rows, and a separate parser-accuracy evaluation. No composite score. |
 | **Dashboard** | 6 Streamlit pages, Plotly charts with Indian rupee formatting (₹1.2L, ₹45K), sidebar filters shared by every page, editable transaction table, CSV export, empty states everywhere. |
 | **Privacy** | PDFs processed in memory and never saved, identifiers masked before storage, nothing sensitive logged, demo and user data in separate databases, one-click delete, private per-visitor databases on public hosting. |
-| **Tests** | 240+ pytest tests on synthetic data, including hand-computed analytics, a ground-truth check of the whole pipeline and the HTTP API. |
+| **Tests** | 290+ pytest tests on synthetic data, including hand-computed analytics, a ground-truth check of the whole pipeline and the HTTP API. |
 
 ## 4. Screenshots
 
@@ -420,17 +422,38 @@ treated as subscriptions. Tolerances live in `src/config.py`.
 
 ## 19. Anomaly detection
 
-No black-box model — every flag can be explained in one sentence:
+There's no black-box model. Every flag can be explained in one sentence. Full method and evaluation:
+[docs/ANOMALY_EVALUATION.md](docs/ANOMALY_EVALUATION.md).
 
-- Compare each expense with **similar payments**: the same merchant if it has ≥ 5 payments, otherwise the same
-  category if it has ≥ 8.
-- Flag it when `amount > Q3 + 1.5 × IQR` (Tukey's rule) **and** `amount ≥ 2 × median` (so tight groups like
-  ₹40–₹60 metro rides don't flag trivial differences).
-- Show the reason: *"₹54,999 is 28.2× your usual Amazon payments (median ₹1,949, typical upper range ≈ ₹4,304,
-  based on 6 payments)."*
-- Too little history → skipped and listed, not guessed. Alerts can be dismissed or marked expected.
+- Only **expenses** are checked. Refunds, transfers, income and card-bill payments never are.
+- Each payment is compared with the user's **earlier** payments (strictly earlier dates, so no future data
+  leaks in): the same merchant if it has ≥ 5 earlier payments, otherwise the same category if it has ≥ 8.
+  With less history it is **not checked**, and the UI says how many weren't.
+- Default rule: **robust z-score ≥ 3.5** (`0.6745 × (amount − median) / MAD`) **and** `amount ≥ 2 × median`.
+  MAD = 0 falls back to the mean absolute deviation. Identical earlier amounts make any different amount
+  infinitely far, so the ratio rule decides. A merchant-consistency guard stops the 2nd rent payment being
+  judged against cheap "Other" purchases.
+- Each flag shows the method, the reference (e.g. "11 earlier Shopping payments"), their median and middle half,
+  the robust z and the ratio, and a descriptive deviation band (notable / large / extreme). This is not a risk score.
+- Flags can be marked expected or dismissed (`anomaly_reviews`). A transaction is never changed.
 
-**Unusual ≠ fraudulent.** The UI states this explicitly.
+**Evaluation** on a labelled synthetic dataset (12 months, 58 injected anomalies). Temporal split: tune Jan–Jun,
+test Jul–Dec. Results on the test half:
+
+| Method | Precision | Recall | F1 | F1 over 5 other seeds |
+|---|---|---|---|---|
+| Category threshold rule (baseline) | 0.769 | 0.294 | 0.426 | 0.583 ± 0.108 |
+| IQR on full history (previous version, uses future data) | 0.743 | 0.765 | 0.754 | 0.739 ± 0.018 |
+| IQR on earlier payments | 0.743 | 0.765 | 0.754 | 0.737 ± 0.004 |
+| **Robust z on earlier payments (default)** | 0.788 | 0.765 | 0.776 | 0.773 ± 0.034 |
+
+The improvement is mainly methodological: no look-ahead leakage, and it doesn't depend on the date filter. The accuracy
+gain is small (about one standard deviation). A grid search on the tune half overfit, so the a-priori defaults
+were kept. Unusually *small* payments are never flagged (a known blind spot), and genuine large purchases are.
+Isolation Forest was considered and rejected: there's one feature per group, no real labels, and no explanation.
+`python -m scripts.evaluate_anomalies` reproduces every number, and a test checks the committed results match a fresh run.
+
+**Unusual ≠ fraudulent.** These are synthetic labels, not fraud labels. The UI says so.
 
 ## 20. Privacy and security
 
@@ -503,6 +526,8 @@ Don't upload real statements to a public instance you don't control — run Spen
 - A credit from a known shop is treated as a refund and flagged for confirmation — it could occasionally be
   something else (e.g. a cashback).
 - Duplicate detection without a balance column or transaction ID can only say "possible duplicate".
+- Parser accuracy has only been measured on synthetic layouts (see docs/PARSER_EVALUATION.md).
+- Unusual-payment detection was evaluated on synthetic labels only, and doesn't look for unusually small payments.
 - Insights describe only the uploaded period; missing statements make month comparisons misleading
   (coverage is shown on every page).
 - Single-user, local app; the SQLite file is unencrypted.
@@ -684,3 +709,85 @@ matching usual spending, not as a problem with the spending.
 - **August 2026:** a ₹54,999 laptop puts Shopping and the overall budget far over. One click opens those
   transactions.
 - **October 2026:** no statement yet. Copy September's budgets to plan ahead; every row shows "spending unknown".
+
+---
+
+## Data-quality scorecard
+
+Page: **/app/quality** · code: `src/quality.py` (dimensions, import report), `src/data_validator.py` (balance
+check, reconciliation) · tests: `tests/test_quality.py`.
+
+### Audit: what already existed and what was added
+
+| Check | Before | Now |
+|---|---|---|
+| Missing date / amount / description | rejected with a reason | same, now coded (`missing_date` …) and counted per import |
+| Invalid / ambiguous dates | rejected, never guessed | same; ambiguous dates counted separately |
+| Zero amount | reported as "missing" | its own code `zero_amount`: a present value, not a gap |
+| Exact duplicates | skipped | same. A verbatim repeated row no longer *also* counts as a balance break |
+| Possible duplicates | imported and flagged | same; reported separately from exact duplicates |
+| Running-balance check | counts per statement | plus a per-row `balance_check` flag, so affected rows can be opened |
+| Missing categories | `categorization_method = 'none'` | coverage % and breakdown by method |
+| Merchant normalisation | `Unknown` merchant | counted and linkable (`unknown_merchant`) |
+| Invalid transaction types | blocked by a database `CHECK` | unchanged (can't occur in stored data) |
+| Opening vs closing balance | not checked | **new**: printed opening + credits − debits vs printed closing balance |
+| Per-import report | a few counts | **new**: structured JSON report stored with each import |
+
+### Dimensions
+
+Value = numerator ÷ denominator × 100 (1 dp). It is **n/a** when the denominator is 0: an empty import isn't "100% complete".
+
+| Dimension | Numerator | Denominator | Included / excluded | Interpretation and limits |
+|---|---|---|---|---|
+| Completeness | extracted rows with date, amount **and** description | rows extracted | all extracted rows; a 0.00 amount counts as present | Low = rows lost to blank cells. Balance is optional and not required. |
+| Validity | rows accepted (every field and business rule passes) | complete rows | incomplete rows are excluded so they aren't counted twice | Low = unreadable or ambiguous dates, zero/negative/two-sided amounts. |
+| Uniqueness | accepted rows that aren't exact duplicates | accepted rows | possible duplicates are **not** counted as duplicates | Possible duplicates are shown as a separate count ("candidates"). |
+| Running-balance consistency | consecutive pairs where previous balance ± amount = printed balance | pairs that could be checked | statements without a balance column are excluded | n/a for UPI-app statements. One misread row breaks one or two pairs. |
+| Categorisation coverage | saved transactions with a category from rule, merchant, AI or manual | saved transactions | current state, after your edits | AI-suggested categories count but are listed as still to verify. |
+| Statement reconciliation | statements whose printed opening + credits − debits = printed closing | statements printing both balances | only balances that are *printed* are used; nothing is inferred from the rows | n/a when no statement prints both balances. |
+
+There is **no composite score**. Averaging these would hide which dimension is weak and mix units (rows,
+pairs, statements).
+
+### Import report (stored per import, shown before you confirm)
+
+Buckets are mutually exclusive and add up: `extracted = rejected + accepted`, and `accepted = to import + exact
+duplicates skipped`. A rejected row is counted once, under its primary reason (missing fields first, then dates,
+then amounts). Flags (possible duplicates, uncategorised, needs review, balance mismatches, rows without a balance)
+can overlap, so they are never added together. The report stores counts and row numbers only: no descriptions,
+amounts of single rows, account numbers or UPI IDs (a test checks this).
+
+### Severity levels
+
+| Severity | Meaning | Examples |
+|---|---|---|
+| Error | data was not imported, or the totals don't reconcile | missing/invalid/ambiguous date, invalid or zero amount, reconciliation difference |
+| Warning | imported, but may be wrong or double-counted | possible duplicate, balance mismatch, uncategorised, unrecognised merchant |
+| Info | a check couldn't run, or a limitation of the format | no balance column, exact duplicate skipped |
+
+### Trend, filters, links
+The scorecard can be filtered by import and by issue type. The trend chart compares imports and appears
+only from the second import; no history is simulated. Findings that exist on saved rows (possible duplicates,
+uncategorised, balance mismatches, unrecognised merchants) link to exactly those transactions.
+
+### Parser evaluation
+Parser accuracy (did we read what's printed?) is measured separately from data quality:
+[docs/PARSER_EVALUATION.md](docs/PARSER_EVALUATION.md). Five synthetic fixtures (233 rows: single page,
+multi-page, wrapped narration, refunds, PhonePe without balances) are read with 100% date, amount and description
+accuracy. That's expected, because the parsers were written for these layouts. **No real statements have been
+evaluated**, so no real-world accuracy is claimed. A test tampers with the ground truth to prove the evaluator
+detects errors.
+
+### Test fixtures
+`tests/test_quality.py` builds small statements by hand, with expected counts written out: missing fields,
+invalid and ambiguous dates, zero amounts, verbatim duplicates, possible duplicates, a misprinted balance, refunds,
+a 110-row multi-page PDF with a wrapped line, an empty statement, a PhonePe statement without balances, printed
+opening/closing balances that do and don't reconcile, an old database without the new columns, and the API filters.
+
+### Limitations
+- Reconciliation needs printed opening and closing balances. Many statements print them in layouts the current
+  parsers don't read, and then it's n/a.
+- Completeness can only count rows the parser saw. A row the parser skipped entirely is invisible to it, but the
+  balance chain or reconciliation usually catches it.
+- Reports are stored from this version on. Older imports show "no stored report" and are excluded from the
+  dimensions that need one.

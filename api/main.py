@@ -15,6 +15,7 @@ Request headers
 from __future__ import annotations
 
 import io
+import json
 import os
 from datetime import date
 from typing import Annotated, Literal
@@ -27,7 +28,10 @@ from pydantic import BaseModel, Field
 
 from api.serialize import clean, records, transaction_rows
 from api.state import MODES, ConnectionManager, PreviewStore, SessionError, is_public
-from src import ai, analytics, anomaly_detector, budgets, config, database, insights, metrics, pipeline, subscription_detector
+from src import (
+    ai, analytics, anomaly_detector, budgets, config, database, insights, metrics, pipeline, quality,
+    subscription_detector,
+)
 from src.analytics import FilterError, Filters
 from src.categorizer import type_for_manual_category
 from src.pdf_parser import PasswordRequiredError, StatementError, supported_formats
@@ -209,8 +213,8 @@ def overview(c: CtxDep, f: FiltersDep):
         totals = analytics.totals(conn, f)
         monthly = analytics.monthly_summary(conn, f)
         comp = insights.compare_periods(conn, f)
-        anomalies, _ = anomaly_detector.detect_anomalies(analytics.transactions(conn, f),
-                                                         database.anomaly_reviews(conn))
+        anomalies, _ = anomaly_detector.detect_for_view(analytics.transactions(conn), analytics.transactions(conn, f),
+                                                        database.anomaly_reviews(conn))
         items = insights.build_insights(conn, f, _recurring(conn, f), anomalies)
         recent = analytics.transactions(conn, f, limit=8)
         return {
@@ -365,7 +369,8 @@ def insights_page(c: CtxDep, f: FiltersDep):
     with c.conn() as conn:
         comp = insights.compare_periods(conn, f)
         txns = analytics.transactions(conn, f)
-        flagged, info = anomaly_detector.detect_anomalies(txns, database.anomaly_reviews(conn), include_reviewed=True)
+        flagged, info = anomaly_detector.detect_for_view(analytics.transactions(conn), txns,
+                                                         database.anomaly_reviews(conn), include_reviewed=True)
         items = insights.build_insights(conn, f, _recurring(conn, f),
                                         flagged[flagged["review_status"] == "new"] if not flagged.empty else flagged)
         result = {
@@ -380,6 +385,15 @@ def insights_page(c: CtxDep, f: FiltersDep):
             "anomaly_info": clean(info),
         }
         return result
+
+
+@app.get("/api/anomalies/evaluation")
+def anomaly_evaluation():
+    """Committed results of the synthetic evaluation (regenerate: python -m scripts.evaluate_anomalies)."""
+    path = config.PROJECT_ROOT / "docs" / "anomaly_evaluation.json"
+    if not path.exists():
+        raise HTTPException(404, "Evaluation results haven't been generated yet.")
+    return JSONResponse(json.loads(path.read_text(encoding="utf-8")))
 
 
 class AnomalyReview(BaseModel):
@@ -560,34 +574,47 @@ def recurring_decision(body: RecurringDecision, c: CtxDep):
 # ----------------------------------------------------------- data quality
 
 @app.get("/api/quality")
-def quality(c: CtxDep):
+def quality_page(c: CtxDep, statement_id: int | None = None,
+                 issue: Annotated[str | None, Query(max_length=40)] = None):
+    """Data Quality Scorecard. Optional filters: one import (``statement_id``) and one
+    issue type (``issue`` code from ``src.quality.ISSUES``)."""
+    if issue is not None and issue not in quality.ISSUES:
+        raise HTTPException(400, f"Unknown issue type: {issue}")
     with c.conn() as conn:
         statements = database.list_statements(conn)
+        if statement_id is not None and not any(s["id"] == statement_id for s in statements):
+            raise HTTPException(404, "Import not found.")
+        where, params = ("WHERE i.statement_id = ?", [statement_id]) if statement_id is not None else ("", [])
         issues = pd.read_sql_query(
-            """SELECT s.display_name AS statement, i.page, i.row_number, i.reason
-               FROM import_issues i JOIN statements s ON s.id = i.statement_id
-               ORDER BY i.statement_id, i.row_number""", conn)
+            f"""SELECT i.statement_id, s.display_name AS statement, i.page, i.row_number, i.reason
+               FROM import_issues i JOIN statements s ON s.id = i.statement_id {where}
+               ORDER BY i.statement_id, i.row_number""", conn, params=params)  # noqa: S608 - fixed fragment
+        rows = []
         breakdown: dict[str, int] = {}
-        for reason in issues["reason"] if not issues.empty else []:
-            for part in reason.split("; "):
-                kind = "Ambiguous date" if "ambiguous" in part else part.split(":", 1)[0]
-                breakdown[kind] = breakdown.get(kind, 0) + 1
-        missing = conn.execute(
-            "SELECT SUM(balance_paise IS NULL), SUM(normalized_merchant = 'Unknown'), COUNT(*) FROM transactions"
-        ).fetchone()
+        for r in issues.to_dict(orient="records"):
+            codes = quality.row_codes(r["reason"])
+            primary = quality.primary_code(codes)
+            breakdown[primary] = breakdown.get(primary, 0) + 1
+            if issue and issue not in codes:
+                continue
+            rows.append({**r, "code": primary, "codes": codes, "severity": quality.ISSUES[primary].severity,
+                         "label": quality.ISSUES[primary].label})
+        scope = [s for s in statements if statement_id is None or s["id"] == statement_id]
         corrections = pd.read_sql_query(
             """SELECT m.corrected_at, t.normalized_merchant AS merchant, m.field, m.old_value, m.new_value
                FROM manual_corrections m JOIN transactions t ON t.id = m.transaction_id
                ORDER BY m.id DESC LIMIT 20""", conn)
         return {
+            "scorecard": clean(quality.scorecard(conn, statement_id)),
             "counts": {**_quality_counts(conn),
-                       "rows_without_balance": int(missing[0] or 0),
-                       "rows_unknown_merchant": int(missing[1] or 0),
-                       "transactions": int(missing[2] or 0),
+                       "transactions": database.count_transactions(conn),
                        "manual_corrections": int(conn.execute("SELECT COUNT(*) FROM manual_corrections").fetchone()[0])},
-            "statements": clean(statements),
-            "issues": records(issues),
-            "issue_breakdown": [{"kind": k, "count": v} for k, v in sorted(breakdown.items())],
+            "statements": clean(scope),
+            "all_statements": [{"id": s["id"], "display_name": s["display_name"]} for s in statements],
+            "issues": clean(rows),
+            "issue_breakdown": [{"code": k, "label": quality.ISSUES[k].label, "count": v} for k, v in sorted(breakdown.items())],
+            "issue_types": [{"code": t.code, "label": t.label, "severity": t.severity, "dimension": t.dimension,
+                             "implication": t.implication} for t in quality.ISSUES.values()],
             "uncategorized": records(analytics.uncategorized(conn)),
             "corrections": records(corrections),
         }
@@ -618,6 +645,7 @@ def _preview_payload(token: str, preview: pipeline.ImportPreview) -> dict:
             "to_import": len(preview.rows) - preview.exact_duplicates,
         },
         "balance_check": {"checked_pairs": q.balance_check.checked_pairs, "mismatches": q.balance_check.mismatches},
+        "report": quality.import_report(preview),
         "warnings": preview.warnings,
         "already_imported": preview.already_imported,
         "rows": rows,

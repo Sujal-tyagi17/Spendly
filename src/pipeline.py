@@ -19,10 +19,11 @@ import pandas as pd
 
 from src import config, database
 from src.categorizer import categorize
-from src.data_validator import QualitySummary, summarize
+from src.data_validator import QualitySummary, Reconciliation, reconcile, summarize
 from src.duplicates import fingerprint, mark_duplicates
 from src.pdf_parser import ParseResult, file_sha256, parse_statement
 from src.privacy import get_logger, mask_sensitive
+from src.quality import import_report
 from src.rules import load_rules
 from src.transaction_normalizer import RawRow, normalize_rows
 
@@ -42,6 +43,7 @@ class ImportPreview:
     quality: QualitySummary
     warnings: list[str] = field(default_factory=list)
     already_imported: bool = False
+    reconciliation: Reconciliation = field(default_factory=lambda: Reconciliation(None, None))
 
     # ---- convenient counts for the UI
     @property
@@ -102,6 +104,12 @@ def _process(records_raw: list[RawRow], parse: ParseResult | None, *, display_na
                                        record.description, record.balance_paise, record.reference),
         })
 
+    mismatch_rows = set(quality.balance_check.mismatch_rows)
+    checked_rows = set(quality.balance_check.checked_rows)
+    for row in rows:
+        row["balance_check"] = ("mismatch" if row["row_number"] in mismatch_rows
+                                else "ok" if row["row_number"] in checked_rows else None)
+
     mark_duplicates(rows, conn)
     for row in rows:
         if row["duplicate_status"] == "possible":
@@ -115,14 +123,23 @@ def _process(records_raw: list[RawRow], parse: ParseResult | None, *, display_na
     if rows and not period_end:
         period_end = max(r["transaction_date"] for r in rows)
 
+    # Printed opening + credits − debits vs printed closing. Exact copies inside the same
+    # file are left out (they're re-extracted rows, not money movements).
+    opening, closing = (parse.opening_balance_paise, parse.closing_balance_paise) if parse else (None, None)
+    rec = reconcile([r for r in rows if r["duplicate_status"] != "exact_in_file"], opening, closing)
+
     already = bool(conn is not None and database.statement_exists(conn, file_hash))
     warnings = list(extra_warnings) + quality.warnings
+    if rec.available and rec.difference_paise != 0:
+        warnings.append(
+            f"Opening balance + credits − debits differs from the printed closing balance by "
+            f"₹{abs(rec.difference_paise) / 100:,.2f}. Some rows may be missing or mis-read.")
     if already:
         warnings.insert(0, "This exact file has already been imported. Importing it again is blocked.")
 
     log.info("Prepared import via %s: %d valid, %d invalid", parser_name, len(rows), len(invalid))
     return ImportPreview(display_name, file_hash, parser_name, parser_label, period_start,
-                         period_end, rows, invalid, quality, warnings, already)
+                         period_end, rows, invalid, quality, warnings, already, rec)
 
 
 def prepare_pdf_import(data: bytes, filename: str, conn: sqlite3.Connection | None,
@@ -206,6 +223,7 @@ def commit_import(conn: sqlite3.Connection, preview: ImportPreview,
             balance_checked_pairs=preview.quality.balance_check.checked_pairs,
             balance_mismatches=preview.quality.balance_check.mismatches,
             warnings=preview.warnings,
+            quality_report=import_report(preview, include_exact_duplicates),
         )
         for row in to_insert:
             row["source_statement_id"] = statement_id

@@ -21,6 +21,11 @@ const STATUS_TABS = [
   { key: "possible_duplicate", label: "Possible duplicates" },
   { key: "uncategorized", label: "Uncategorized" },
 ] as const;
+// Reached only through deep links from the Data Quality scorecard; shown as a tab while active.
+const LINK_ONLY_TABS = [
+  { key: "balance_mismatch", label: "Balance mismatches" },
+  { key: "unknown_merchant", label: "Unrecognised merchants" },
+] as const;
 
 function SortHeader({ k, label, sort, order, onToggle, className = "" }: {
   k: SortKey; label: string; sort: SortKey; order: "asc" | "desc"; onToggle: (k: SortKey) => void; className?: string;
@@ -61,7 +66,7 @@ export default function TransactionsPage() {
   useEffect(() => {
     const s = new URLSearchParams(window.location.search).get("status");
     // eslint-disable-next-line react-hooks/set-state-in-effect -- read deep link once on mount
-    if (s && STATUS_TABS.some((t) => t.key === s)) setStatus(s);
+    if (s && [...STATUS_TABS, ...LINK_ONLY_TABS].some((t) => t.key === s)) setStatus(s);
   }, []);
 
   useEffect(() => {
@@ -108,7 +113,7 @@ export default function TransactionsPage() {
         </label>
         <div className="flex flex-wrap items-center gap-2">
           <div role="tablist" aria-label="Review status" className="flex flex-wrap gap-1 rounded-xl border border-line bg-ink-2 p-1">
-            {STATUS_TABS.map((t) => (
+            {[...STATUS_TABS, ...LINK_ONLY_TABS.filter((t) => t.key === status)].map((t) => (
               <button key={t.key} role="tab" type="button" aria-selected={status === t.key} onClick={() => setStatus(t.key)}
                 className={`rounded-lg px-2.5 py-1.5 text-[0.76rem] font-medium transition-colors ${status === t.key ? "bg-white/[0.08] text-fg" : "text-muted hover:text-fg"}`}>
                 {t.label}

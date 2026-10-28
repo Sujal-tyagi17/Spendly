@@ -127,11 +127,34 @@ export type InsightsResponse = {
   insights: Insight[];
   weekday: { weekday_name: string; transaction_count: number; expenditure_paise: number; avg_transaction_paise: number | null }[];
   largest: { id: number; transaction_date: string; merchant: string; category: string; amount_paise: number }[];
-  anomalies: {
-    id: number; transaction_date: string; merchant: string; category: string; amount_paise: number; basis: string;
-    median_paise: number; threshold_paise: number; ratio_to_median: number; reason: string; review_status: string;
-  }[];
-  anomaly_info: { checked_categories: string[]; skipped_categories: Record<string, number>; checked_merchants: number };
+  anomalies: Anomaly[];
+  anomaly_info: AnomalyInfo;
+};
+
+export type Anomaly = {
+  id: number; transaction_date: string; merchant: string; category: string; amount_paise: number;
+  method: string; basis: "merchant" | "category" | "rule"; reference_label: string; reference_count: number | null;
+  median_paise: number | null; q1_paise: number | null; q3_paise: number | null; threshold_paise: number | null;
+  mad_paise: number | null; robust_z: number | null; ratio_to_median: number | null; days_since_previous: number | null;
+  deviation: "notable" | "large" | "extreme"; reason: string; review_status: string;
+};
+
+export type AnomalyInfo = {
+  method: string; method_label: string; checked: number; insufficient_history: number;
+  skipped_categories: Record<string, number>; checked_categories: string[]; checked_merchants: number;
+  settings: { merchant_min_observations: number; min_observations: number; z_threshold: number; iqr_multiplier: number; min_ratio_to_median: number };
+};
+
+export type AnomalyEvalRun = {
+  tp: number; fp: number; tn: number; fn: number; precision: number | null; recall: number | null; f1: number | null;
+  not_checked: number; eligible: number; anomalies: number; by_kind: Record<string, { count: number; flagged: number }>;
+};
+
+export type AnomalyEvaluation = {
+  seed: number; stability_seeds: number[]; tune_period: [string, string]; test_period: [string, string];
+  dataset: { rows: number; eligible_expenses: number; anomalies: number; by_kind: Record<string, number> };
+  results: { method: string; default_params: Record<string, number>; test_default: AnomalyEvalRun; tuned_params?: Record<string, number>;
+    test_tuned?: AnomalyEvalRun; seeds: Record<"precision" | "recall" | "f1", { mean: number | null; sd: number | null; n: number }> }[];
 };
 
 export type Recurring = {
@@ -165,13 +188,51 @@ export type Statement = {
   statement_period_end: string | null; rows_extracted: number; rows_imported: number; rows_invalid: number;
   rows_skipped_duplicates: number; balance_checked_pairs: number; balance_mismatches: number; warnings: string[];
   created_at: string;
+  quality_report: ImportReport | null;
+};
+
+export type Severity = "error" | "warning" | "info";
+
+export type ReportIssue = { code: string; label: string; severity: Severity; dimension: string; count: number; implication: string; unit: "rows" | "statement" };
+
+export type ImportReport = {
+  rows_extracted: number; rows_rejected: number; rows_accepted: number; rows_to_import: number;
+  exact_duplicates_skipped: number; exact_duplicates_found: number; rows_complete: number;
+  rejected_by_reason: Record<string, number>; field_issues: Record<string, number>;
+  flags: { possible_duplicates: number; uncategorised: number; unknown_merchant: number; needs_review: number; balance_mismatch_rows: number; rows_without_balance: number };
+  balance_check: { available: boolean; checked_pairs: number; mismatches: number; order: string | null; mismatch_rows: number[] };
+  reconciliation: { available: boolean; opening_paise: number | null; closing_paise: number | null; credits_paise: number; debits_paise: number;
+    computed_closing_paise: number | null; difference_paise: number | null; reconciled: boolean | null };
+  dimensions: Record<string, number | null>;
+  warnings: string[];
+  issues: ReportIssue[];
+};
+
+export type QualityDimension = {
+  key: string; label: string; numerator: number; denominator: number; value_pct: number | null;
+  definition: string; note: string | null; higher_is_better: boolean;
+};
+
+export type Scorecard = {
+  scope: { statement_id: number | null; statements: number; with_report: number; transactions: number };
+  dimensions: QualityDimension[];
+  issues: (Omit<ReportIssue, "count"> & { count: number; current_count: number | null; status_filter: string | null })[];
+  categorisation_methods: Record<string, number>;
+  rows_with_balance: number;
+  trend: { statement_id: number; display_name: string; imported_at: string; rows_extracted: number; rows_rejected: number;
+    exact_duplicates: number; possible_duplicates: number; balance_mismatches: number; uncategorised: number;
+    completeness_pct: number | null; validity_pct: number | null }[];
+  trend_available: boolean;
 };
 
 export type QualityResponse = {
-  counts: QualityCounts & { rows_without_balance: number; rows_unknown_merchant: number; transactions: number; manual_corrections: number };
+  scorecard: Scorecard;
+  counts: QualityCounts & { transactions: number; manual_corrections: number };
   statements: Statement[];
-  issues: { statement: string; page: number | null; row_number: number | null; reason: string }[];
-  issue_breakdown: { kind: string; count: number }[];
+  all_statements: { id: number; display_name: string }[];
+  issues: { statement_id: number; statement: string; page: number | null; row_number: number | null; reason: string; code: string; codes: string[]; severity: Severity; label: string }[];
+  issue_breakdown: { code: string; label: string; count: number }[];
+  issue_types: { code: string; label: string; severity: Severity; dimension: string; implication: string }[];
   uncategorized: { merchant: string; direction: string; transaction_count: number; total_paise: number; last_seen: string }[];
   corrections: { corrected_at: string; merchant: string; field: string; old_value: string; new_value: string }[];
 };
@@ -188,6 +249,7 @@ export type ImportPreview = {
   period: { start: string | null; end: string | null };
   counts: { extracted: number; valid: number; invalid: number; exact_duplicates: number; possible_duplicates: number; uncategorized: number; to_import: number };
   balance_check: { checked_pairs: number; mismatches: number };
+  report: ImportReport;
   warnings: string[];
   already_imported: boolean;
   rows: PreviewRow[];
