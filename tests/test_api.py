@@ -242,3 +242,17 @@ def test_public_mode_isolates_sessions(tmp_path, monkeypatch):
 def test_ai_summary_disabled_by_default(client, monkeypatch):
     monkeypatch.delenv("SPENDLY_ENABLE_AI", raising=False)
     assert client.post("/api/ai/summary", headers=DEMO).status_code == 409
+
+
+def test_analysis_endpoint_matches_sql_layer(client, demo_conn):
+    data = client.get("/api/analysis", headers=DEMO).json()
+    assert data["totals"]["expenditure_paise"] == analytics.totals(demo_conn)["expenditure_paise"]
+    assert data["concentration"]["top_merchant"] == "House Rent"
+    assert data["merchants"][0]["merchant"] == "House Rent" and len(data["merchants"]) <= 25
+    assert data["weekend"][0]["scope"] == "All categories"
+    assert data["monthly"][-1]["cumulative_net_cash_flow_paise"] == data["totals"]["net_cash_flow_paise"]
+    assert data["recurring"]["share_of_expenditure_pct"] is not None
+    assert "is_expense" in data["definitions"]
+    aug = client.get("/api/analysis", params={"start": "2026-08-01", "end": "2026-08-31"}, headers=DEMO).json()
+    assert aug["range"] == {"start": "2026-08-01", "end": "2026-08-31"}
+    assert {m["month_start"] for m in aug["monthly"]} == {"2026-08-01"}

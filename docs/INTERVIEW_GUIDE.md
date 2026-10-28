@@ -129,7 +129,7 @@ with fewer than 8 payments are skipped. "Unusual" is never presented as fraud.
 - The local SQLite file is documented honestly as unencrypted.
 
 **19. How did you test it?**
-There are 170+ pytest tests:
+There are 190+ pytest tests:
 - hand-computed analytics on a 9-row fixture
 - a 285-row synthetic dataset with ground-truth labels, where every row must be classified correctly
 - synthetic PDFs built with reportlab: multi-page, wrapped lines, password-protected, scanned and corrupt files
@@ -166,6 +166,29 @@ the numbers differ.
 **25. What happens on a public deployment?**
 Each browser session sends a random id. That session gets its own in-memory demo and user databases, which
 expire after inactivity. Nothing is written to disk, and a test proves one session can't see another's data.
+
+## Advanced SQL
+
+**26. How do you make sure "expenditure" means the same thing in every query?**
+It's defined once, in `src/metrics.py`, as `{{is_expense}}`, and every SQL file uses that placeholder. A test
+fails if any file writes the rule by hand.
+
+**27. How do you calculate a median in SQLite, which has no MEDIAN function?**
+Number each merchant's payments with `ROW_NUMBER() OVER (PARTITION BY merchant ORDER BY amount)` and count them
+with `COUNT() OVER (PARTITION BY merchant)`. Then take the middle row, or the average of the two middle rows when
+the count is even (see `merchant_stats.sql`).
+
+**28. A month shows ₹0. Is that real?**
+Only if a statement covers it. `monthly_summary.sql` checks statement coverage with `EXISTS` and returns
+`prev_status` (`none`, `not_covered`, `zero` or `value`), so a missing month never produces a fake −100% change.
+
+**29. Why compare weekdays and weekends per day instead of by total?**
+A month has about 22 weekdays and only 8 or 9 weekend days, so totals are always bigger on weekdays. A recursive
+day calendar counts the actual days in the period, and spend per day is the fair comparison.
+
+**30. What does the HHI tell you, and what are its limits?**
+It's the sum of squared % shares: from near 0 (spread out) to 10,000 (one merchant). It's descriptive, one big
+fixed cost like rent can dominate it, and it depends on how well merchant names were normalized.
 
 ## Numbers worth knowing (demo data)
 - 285 synthetic rows, April–September 2026. One exact duplicate is skipped, so 284 are imported.

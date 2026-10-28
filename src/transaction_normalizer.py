@@ -129,12 +129,16 @@ def normalize_row(row: RawRow, index: int, date_formats: tuple[str, ...] = DEFAU
     try:
         if has_debit and has_credit:
             issues.append("Amount: both debit and credit are filled")
-        elif has_debit:
-            amount, _ = parse_amount(row.debit_text)
-            direction = "debit"
-        elif has_credit:
-            amount, _ = parse_amount(row.credit_text)
-            direction = "credit"
+        elif has_debit or has_credit:
+            column_text = row.debit_text if has_debit else row.credit_text
+            direction = "debit" if has_debit else "credit"
+            if str(column_text).strip().startswith(("-", "(")):
+                # A signed value inside a Debit/Credit column is ambiguous (a reversal?).
+                # Never guess: report it instead of importing a possibly wrong direction.
+                issues.append(f"Amount: negative value in the {direction.title()} column — unclear meaning")
+                direction = None
+            else:
+                amount, _ = parse_amount(column_text)
         elif not _blank(row.amount_text):
             amount, hint = parse_amount(row.amount_text)
             direction = _direction_from_text(row.drcr_text) or hint

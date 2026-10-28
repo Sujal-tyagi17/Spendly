@@ -157,3 +157,53 @@ def recurring_monthly_total(candidates: list[Candidate]) -> int:
     """Estimated monthly cost of active (confirmed + high-confidence) payments."""
     return sum(c.est_monthly_paise for c in candidates
                if c.status in {"confirmed", "high_confidence"} and not c.possibly_stopped)
+
+
+def recurring_spend(conn, filters, candidates: list[Candidate]) -> dict:
+    """How much of actual expenditure went to active recurring merchants.
+
+    Uses the *actual* payments (not the estimates) so nothing is double counted:
+    each transaction is counted once, through the same SQL expenditure definition
+    as every other metric (analytics.monthly_summary with a merchant filter).
+    """
+    from dataclasses import replace
+
+    from src import analytics
+
+    filters = filters or analytics.Filters()
+    active = sorted({c.merchant for c in candidates
+                     if c.status in {"confirmed", "high_confidence"} and not c.possibly_stopped})
+    if filters.merchants:
+        active = [m for m in active if m in set(filters.merchants)]
+    total = analytics.totals(conn, filters)["expenditure_paise"]
+    monthly_all = analytics.monthly_summary(conn, filters)
+    result = {
+        "merchants": active,
+        "estimated_monthly_paise": recurring_monthly_total(
+            [c for c in candidates if c.merchant in set(active)]),
+        "actual_recurring_paise": 0,
+        "total_expenditure_paise": int(total),
+        "share_of_expenditure_pct": None,
+        "monthly": [],
+    }
+    result["estimated_annual_paise"] = result["estimated_monthly_paise"] * 12
+    if not active or monthly_all.empty:
+        return result
+
+    scoped = replace(filters, merchants=tuple(active))
+    recurring_total = analytics.totals(conn, scoped)["expenditure_paise"]
+    result["actual_recurring_paise"] = int(recurring_total)
+    if total:
+        result["share_of_expenditure_pct"] = round(100 * recurring_total / total, 1)
+
+    monthly_rec = analytics.monthly_summary(conn, scoped)
+    rec_by_month = dict(zip(monthly_rec["month_start"], monthly_rec["expenditure_paise"]))
+    for row in monthly_all.itertuples():
+        rec = int(rec_by_month.get(row.month_start, 0))
+        result["monthly"].append({
+            "month_start": row.month_start,
+            "recurring_paise": rec,
+            "expenditure_paise": int(row.expenditure_paise),
+            "share_pct": round(100 * rec / row.expenditure_paise, 1) if row.expenditure_paise else None,
+        })
+    return result

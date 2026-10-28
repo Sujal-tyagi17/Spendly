@@ -8,7 +8,7 @@ periods AS (
            SUM(CASE WHEN transaction_date BETWEEN :cur_start AND :cur_end THEN amount_paise ELSE 0 END)   AS current_paise,
            SUM(CASE WHEN transaction_date BETWEEN :prev_start AND :prev_end THEN amount_paise ELSE 0 END) AS previous_paise
     FROM base
-    WHERE transaction_type = 'expense' AND direction = 'debit'
+    WHERE {{is_expense}}
       AND transaction_date BETWEEN :prev_start AND :cur_end
     GROUP BY category
 )

@@ -8,7 +8,7 @@ spend AS (
            COUNT(*)          AS transaction_count,
            SUM(amount_paise) AS expenditure_paise
     FROM base
-    WHERE transaction_type = 'expense' AND direction = 'debit'
+    WHERE {{is_expense}}
     GROUP BY category
 )
 SELECT

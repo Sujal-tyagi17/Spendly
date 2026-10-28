@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import {
   BarChart3, ChevronsLeft, ChevronsRight, Database, FileCheck2, FlaskConical, LayoutDashboard, Lock, Menu, Receipt,
-  Repeat, Upload, X,
+  Repeat, Sigma, Upload, X,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -19,6 +19,7 @@ export const NAV = [
   { href: "/app/transactions", label: "Transactions", icon: Receipt, filters: true },
   { href: "/app/insights", label: "Spending Insights", icon: BarChart3, filters: true },
   { href: "/app/recurring", label: "Recurring Payments", icon: Repeat, filters: true },
+  { href: "/app/analysis", label: "SQL Analysis", icon: Sigma, filters: true },
   { href: "/app/quality", label: "Data Quality", icon: FileCheck2, filters: false },
   { href: "/app/import", label: "Import & Settings", icon: Upload, filters: false },
 ] as const;

@@ -66,7 +66,7 @@ export default function QualityPage() {
 
       <section aria-labelledby="checks-title" className="space-y-4">
         <SectionHeader id="checks-title" title="Checks" subtitle="Every count comes from the import validation. Nothing here is an estimate." />
-        <ul className="grid gap-3 lg:grid-cols-2">
+        <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           {checks.map((k) => {
             const Icon = k.icon;
             const clean = k.count === 0;
@@ -138,7 +138,7 @@ export default function QualityPage() {
         </Card>
       </section>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <section aria-labelledby="uncat-title" className="space-y-4">
           <SectionHeader id="uncat-title" title="Uncategorized merchants" subtitle="Fix one row and apply it to the whole merchant" />
           <Card className="p-2">

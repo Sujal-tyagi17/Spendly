@@ -25,7 +25,7 @@ export default function InsightsPage() {
   if (meta && meta.counts.transactions === 0) return <NoDataState />;
   if (error && !data) return <ErrorState message={error.message} onRetry={reload} />;
   if (initialLoading || !data) {
-    return <div className="space-y-5" role="status" aria-label="Loading insights"><Skeleton className="h-40" /><div className="grid gap-4 md:grid-cols-3"><Skeleton className="h-44" /><Skeleton className="h-44" /><Skeleton className="h-44" /></div></div>;
+    return <div className="space-y-5" role="status" aria-label="Loading insights"><Skeleton className="h-40" /><div className="grid grid-cols-1 gap-4 md:grid-cols-3"><Skeleton className="h-44" /><Skeleton className="h-44" /><Skeleton className="h-44" /></div></div>;
   }
 
   const comp = data.comparison;
@@ -82,7 +82,7 @@ export default function InsightsPage() {
       {cards.length ? (
         <section aria-labelledby="insights-title" className="space-y-4">
           <SectionHeader id="insights-title" title="Insights" subtitle="Every number is calculated from your transactions. Open any card to see the rows behind it." />
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {cards.map((i) => <InsightCard key={i.key} insight={i} onOpen={(x) => x.link && openTransactions(x.link)} />)}
           </div>
         </section>
@@ -92,7 +92,7 @@ export default function InsightsPage() {
       {comp ? (
         <section aria-labelledby="drivers-title" className="space-y-4">
           <SectionHeader id="drivers-title" title="Drivers of the change" subtitle={`${comp.current.label} vs ${comp.previous.label}`} />
-          <div className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1.4fr_1fr]">
             <ChartContainer title="By category" subtitle="Spending in each period" height={320}
               table={{ columns: ["Category", comp.previous.label, comp.current.label, "Change"],
                 rows: data.category_changes.map((c) => [c.category, inr(c.previous_paise), inr(c.current_paise), inr(c.change_paise, { sign: true })]) }}>
@@ -132,7 +132,7 @@ export default function InsightsPage() {
       {/* ---------- patterns */}
       <section aria-labelledby="patterns-title" className="space-y-4">
         <SectionHeader id="patterns-title" title="Patterns" subtitle="Across the selected period" />
-        <div className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1.4fr_1fr]">
           <ChartContainer title="Spending by weekday" subtitle="Total expenditure on each day of the week" height={260}
             table={{ columns: ["Day", "Spent", "Payments"], rows: data.weekday.map((w) => [w.weekday_name, inr(w.expenditure_paise), w.transaction_count]) }}>
             <WeekdayChart data={data.weekday} />
@@ -168,7 +168,7 @@ export default function InsightsPage() {
             No payment stands far above your own history for that merchant or category.
           </EmptyState>
         ) : (
-          <ul className="grid gap-3 lg:grid-cols-2">
+          <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             {anomalies.map((a) => (
               <li key={a.id}>
                 <Card as="article" className="h-full p-4 sm:p-5">

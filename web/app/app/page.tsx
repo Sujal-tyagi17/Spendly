@@ -21,7 +21,7 @@ function OverviewSkeleton() {
   return (
     <div className="space-y-5" role="status" aria-label="Loading overview">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-[7.5rem]" />)}</div>
-      <div className="grid gap-5 xl:grid-cols-3"><Skeleton className="h-[360px] xl:col-span-2" /><Skeleton className="h-[360px]" /></div>
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-3"><Skeleton className="h-[360px] xl:col-span-2" /><Skeleton className="h-[360px]" /></div>
     </div>
   );
 }
@@ -83,7 +83,7 @@ export default function OverviewPage() {
       </div>
 
       {/* ---------- trend + insights */}
-      <div className="grid gap-5 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-3">
         <div className="xl:col-span-2">
           <ChartContainer title="Monthly spending" subtitle="Expenditure by month (before refunds), with income for reference" height={360}
             table={{ columns: ["Month", "Expenditure", "Income", "Change vs previous"],
@@ -101,7 +101,7 @@ export default function OverviewPage() {
       </div>
 
       {/* ---------- breakdowns */}
-      <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 xl:grid-cols-3">
         <Card className="p-4 sm:p-5">
           <SectionHeader title="Where it went" subtitle="Expenditure by category. Select one to see its transactions." />
           <div className="mt-4">

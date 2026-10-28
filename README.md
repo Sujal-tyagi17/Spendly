@@ -71,13 +71,13 @@ visibly flagged for review.
 | **Validation** | **Running-balance check** (`previous balance ± amount = printed balance`) to catch mis-read or missing rows; per-row issue reasons; data-quality report. |
 | **Duplicates** | *Exact* duplicates (same balance or transaction ID — overlapping statements, repeated rows) are skipped; *possible* duplicates (two ₹20 chais on one day) are imported and flagged — never deleted automatically. Re-importing the same file is blocked by hash. |
 | **Categorization** | Rule registry in `config/rules.json` (55+ Indian merchants, transfer / card-bill / refund / salary rules). Debits aren't all expenses; credits aren't all income. Optional Gemini fallback for unknown merchants. Manual corrections, with "apply to all from this merchant". |
-| **SQL analytics** | 12 documented `.sql` files using CTEs, recursive CTEs, window functions (`LAG`, `RANK`, `SUM() OVER`), conditional aggregation; every page uses the same metric definitions. |
+| **SQL analytics** | 15 documented `.sql` files: CTEs, recursive CTEs, window functions (`LAG`, `RANK`, `DENSE_RANK`, running `SUM() OVER`), a SQLite median, conditional aggregation. Metric definitions live in one place (`src/metrics.py`). |
 | **Spending intelligence** | "Your expenditure increased by 18%… Food & Dining contributed the largest share" — computed from equal-length periods (partial months compared fairly), with safe zero-denominator handling. |
 | **Recurring payments** | Interval + amount-stability detection (weekly / monthly / quarterly / yearly), confidence levels, rationale, estimated monthly/annual cost, "may have been cancelled" hints, confirm/reject controls. |
 | **Anomalies** | Interpretable IQR rule against the same merchant's or category's history, with a plain-English reason. Never labelled fraud. Dismiss / mark expected. |
 | **Dashboard** | 6 Streamlit pages, Plotly charts with Indian rupee formatting (₹1.2L, ₹45K), sidebar filters shared by every page, editable transaction table, CSV export, empty states everywhere. |
 | **Privacy** | PDFs processed in memory and never saved, identifiers masked before storage, nothing sensitive logged, demo and user data in separate databases, one-click delete, private per-visitor databases on public hosting. |
-| **Tests** | 170+ pytest tests on synthetic data, including hand-computed analytics, a ground-truth check of the whole pipeline and the HTTP API. |
+| **Tests** | 190+ pytest tests on synthetic data, including hand-computed analytics, a ground-truth check of the whole pipeline and the HTTP API. |
 
 ## 4. Screenshots
 
@@ -280,7 +280,7 @@ so the change can be broken down by category (refunds can't always be attributed
 partial (data ends on the 12th), it is compared with the 1st–12th of the previous month and labelled
 "partial month". All results cover **only the uploaded statements** — the dashboard says so.
 
-### Example: month-over-month with `LAG()`
+### Example: month-over-month with `LAG()` (simplified)
 
 ```sql
 SELECT f.month_start,
@@ -324,14 +324,77 @@ FROM spend;
 | Concept | Where |
 |---|---|
 | CTEs (`WITH`) | every file in `sql/` |
-| Recursive CTE (month calendar) | `monthly_summary.sql` |
-| Conditional aggregation (`SUM(CASE …)`) | `monthly_summary.sql`, `totals.sql`, `category_change.sql` |
-| Window functions: `LAG`, `RANK`, `SUM() OVER ()`, `COUNT() OVER (PARTITION BY)` | `monthly_summary.sql`, `category_spending.sql`, `top_merchants.sql`, `recurring_candidates.sql` |
-| `LAG` over `julianday()` for gaps between payments | `recurring_candidates.sql` |
-| `VALUES` lists + `LEFT JOIN` to fill missing categories | `weekday_spending.sql` |
+| Recursive CTEs: month calendar, day calendar | `monthly_summary.sql`, `monthly_category.sql`, `weekend_split.sql` |
+| Conditional aggregation (`SUM(CASE …)`) | `monthly_summary.sql`, `totals.sql`, `weekend_split.sql`, `category_change.sql` |
+| `LAG` (with `PARTITION BY`) | `monthly_summary.sql` (overall), `monthly_category.sql` (per category), `recurring_candidates.sql` (days between payments) |
+| `RANK` vs `DENSE_RANK` | `merchant_stats.sql` (spend rank vs frequency rank), `monthly_category.sql` (rank in month) |
+| Running totals (`SUM() OVER (ORDER BY … ROWS UNBOUNDED PRECEDING)`) | cumulative net cash flow, cumulative merchant share |
+| Median without a `MEDIAN` function (`ROW_NUMBER` + `COUNT() OVER`) | `merchant_stats.sql` |
+| Named `WINDOW` clause, `EXISTS` sub-queries | `monthly_summary.sql` (statement coverage per month) |
+| `CROSS JOIN` grid + `LEFT JOIN` so missing combinations show as 0 | `monthly_category.sql`, `weekday_spending.sql` |
 | `NULLIF` / `COALESCE` for zero denominators and empty data | throughout |
-| Date functions (`strftime`, `date(..., 'start of month')`) | throughout |
+| Shared metric definitions (`{{is_expense}}` etc.) | `src/metrics.py`, expanded by `analytics.load_sql` |
 | Parameterized queries, indexes, constraints, transactions | `src/database.py`, `src/analytics.py` |
+
+### One definition per metric
+
+What counts as spending, income, a refund, a transfer, or a change in cash flow is written **once**, in
+`src/metrics.py`. SQL files use placeholders such as `SUM(CASE WHEN {{is_expense}} THEN amount_paise END)`, and
+`analytics.load_sql` expands them before running. A test fails if any SQL file writes the expense rule by hand.
+Changing a definition changes every query, chart, API response and insight together.
+
+### Advanced analytical questions
+
+| Question | Query | Why a stakeholder cares |
+|---|---|---|
+| How did spending change month to month, and was the previous month *really* zero or just missing? | `monthly_summary.sql` (`expenditure_change_paise`, `mom_change_pct`, `prev_status`, `is_covered`, `is_full_month`) | Trend reporting that never shows a fake "−100%" because a statement is missing. |
+| Which categories drove this month's change? | `monthly_category.sql` (per-category `LAG`, `share_of_change_pct`, `rank_in_month`) | Turns "spending is up 18%" into "Food explains 70% of the increase", which is something you can act on. |
+| Where does the money go, and what's a normal payment? | `merchant_stats.sql` (count, total, average, **median**, share, cumulative share, active months) | The average vs median gap shows when a few big payments distort the picture. |
+| Is spending spread out or concentrated? | `spending_concentration.sql` (top-1/5/10 share, HHI) | Shows dependency on a few payees (rent, one marketplace). It's a familiar metric from competition and portfolio analysis. |
+| Do weekends look different? | `weekend_split.sql` (totals, averages, **per calendar day**, by category) | A fair comparison that adjusts for 5 weekdays vs 2 weekend days. It's descriptive, not causal. |
+| How much of spending is already committed? | `subscription_detector.recurring_spend` (actual payments to active recurring merchants, monthly share) | Fixed vs flexible spending, the starting point for any budget. |
+| What is the cash-flow trajectory? | `monthly_summary.sql` (income, expenditure, refunds, net and running net cash flow) | Shows whether money accumulates or drains over the period. |
+
+Everything is available through `GET /api/analysis` and shown on the **SQL Analysis** page of the web app,
+using the same global filters as every other page.
+
+![SQL Analysis page](docs/screenshots/web-analysis.png)
+
+### Edge cases handled (and tested)
+
+- **Missing vs zero month:** months with no statement are `is_covered = 0` and have no change value. A covered month
+  with no spending is a real `0`.
+- **Zero denominator:** `% change` is `NULL` when the previous month is 0. The absolute change is still shown.
+- **Partial months:** `is_full_month = 0` when statements don't cover the whole month (labelled "partial").
+- **Transfers and card bills:** never counted as spending or income. Card bills *are* counted in cash flow.
+- **Refunds:** reported separately, and net expenditure = expenditure − refunds.
+- **Duplicates:** exact duplicates are skipped at import, so no analysis counts them twice.
+- **Signed values in a Debit/Credit column** (e.g. `-50.00`): flagged as unreadable instead of guessed.
+- **Empty data:** every query returns zeros or `NULL`s instead of failing.
+- **Precision:** all sums are integer paise. Shares and percentages are rounded only for display.
+
+The tests in `tests/test_advanced_analytics.py` use a hand-made fixture whose expected values are written out by
+hand or recomputed with plain Python (`statistics.median`, `datetime` day counts). So a wrong SQL formula can't
+pass by agreeing with itself.
+
+### Example insights (synthetic demo data)
+
+- Expenditure fell 60.8% in September vs August (₹1,02,186 → ₹40,088). Shopping explains most of the drop
+  (−₹57,468): August included one ₹54,999 purchase.
+- The top 5 merchants receive 64.6% of spending. The HHI is ≈1,600 (moderate), mostly because of rent (33%).
+- Amazon's average payment (₹10,572) is far above its median (₹1,949), so one large purchase skews the average.
+- Weekday spending is ₹1,979 per day vs ₹1,276 per weekend day over the six months.
+- 38.9% of spending went to six recurring merchants (rent, gym, phone and streaming).
+
+### Analysis limitations
+
+- **One account at a time:** the data model has no account column, so transfers between accounts are recognised
+  only by their description ("SELF TRANSFER", "OWN A/C").
+- Concentration and merchant rankings depend on merchant-name normalization. Unrecognised spellings split one
+  merchant into two.
+- Weekday/weekend and category patterns describe the data. They don't explain behaviour.
+- Recurring estimates use median amounts. "Share of expenditure" uses actual payments, which is more reliable.
+- Results cover only the imported statements. Coverage gaps are flagged, not filled.
 
 ## 18. Recurring-payment detection
 

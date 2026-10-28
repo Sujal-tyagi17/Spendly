@@ -4,6 +4,6 @@ WITH base AS (
 )
 SELECT id, transaction_date, normalized_merchant AS merchant, category, amount_paise, description
 FROM base
-WHERE transaction_type = 'expense' AND direction = 'debit'
+WHERE {{is_expense}}
 ORDER BY amount_paise DESC, transaction_date DESC
 LIMIT :limit;

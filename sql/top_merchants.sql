@@ -9,7 +9,7 @@ by_merchant AS (
            SUM(amount_paise)    AS expenditure_paise,
            MAX(transaction_date) AS last_seen
     FROM base
-    WHERE transaction_type = 'expense' AND direction = 'debit'
+    WHERE {{is_expense}}
     GROUP BY normalized_merchant
 )
 SELECT merchant, category, transaction_count, expenditure_paise, last_seen,

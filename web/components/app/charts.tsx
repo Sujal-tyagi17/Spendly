@@ -194,3 +194,71 @@ export function RankedBars({ items, onSelect }: {
     </ul>
   );
 }
+
+/** Income vs expenditure per month (two series, one ₹ axis). */
+export function CashFlowChart({ data }: { data: { month_start: string; income_paise: number; expenditure_paise: number }[] }) {
+  const reduced = useReducedMotion();
+  const rows = data.map((d) => ({ month: d.month_start, Income: d.income_paise / 100, Expenditure: d.expenditure_paise / 100 }));
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} barGap={3}>
+        <CartesianGrid stroke={C.grid} vertical={false} />
+        <XAxis dataKey="month" tickFormatter={monthLabel} {...axisProps} dy={6} />
+        <YAxis tickFormatter={(v) => inrCompact(v * 100)} width={56} {...axisProps} />
+        <Tooltip content={<ChartTooltip labelFormat={monthLabel} />} cursor={{ fill: "rgb(255 255 255 / 0.03)" }} />
+        <Legend verticalAlign="top" align="right" height={28} iconType="square"
+          formatter={(v) => <span className="text-[0.75rem] text-muted">{v}</span>} />
+        <Bar dataKey="Income" fill={C.income} radius={[4, 4, 0, 0]} maxBarSize={22} isAnimationActive={!reduced} />
+        <Bar dataKey="Expenditure" fill={C.lime2} radius={[4, 4, 0, 0]} maxBarSize={22} isAnimationActive={!reduced} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+/** Running net cash flow (single series). */
+export function CumulativeChart({ data }: { data: { month_start: string; cumulative_net_cash_flow_paise: number }[] }) {
+  const reduced = useReducedMotion();
+  const rows = data.map((d) => ({ month: d.month_start, "Running net cash flow": d.cumulative_net_cash_flow_paise / 100 }));
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <ComposedChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+        <defs>
+          <linearGradient id="cumFill" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor={C.lime2} stopOpacity={0.18} />
+            <stop offset="100%" stopColor={C.lime2} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid stroke={C.grid} vertical={false} />
+        <XAxis dataKey="month" tickFormatter={monthLabel} {...axisProps} dy={6} />
+        <YAxis tickFormatter={(v) => inrCompact(v * 100)} width={56} {...axisProps} />
+        <Tooltip content={<ChartTooltip labelFormat={monthLabel} />} cursor={{ stroke: "#2a342a" }} />
+        <Area type="monotone" dataKey="Running net cash flow" stroke={C.lime2} strokeWidth={2} fill="url(#cumFill)"
+          dot={{ r: 3, fill: C.lime2, strokeWidth: 0 }} isAnimationActive={!reduced} animationDuration={900} />
+      </ComposedChart>
+    </ResponsiveContainer>
+  );
+}
+
+/** Spending to recurring merchants vs everything else, per month (stacked: parts of one total). */
+export function RecurringChart({ data }: { data: { month_start: string; recurring_paise: number; expenditure_paise: number }[] }) {
+  const reduced = useReducedMotion();
+  const rows = data.map((d) => ({
+    month: d.month_start,
+    Recurring: d.recurring_paise / 100,
+    "Everything else": (d.expenditure_paise - d.recurring_paise) / 100,
+  }));
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+        <CartesianGrid stroke={C.grid} vertical={false} />
+        <XAxis dataKey="month" tickFormatter={monthLabel} {...axisProps} dy={6} />
+        <YAxis tickFormatter={(v) => inrCompact(v * 100)} width={56} {...axisProps} />
+        <Tooltip content={<ChartTooltip labelFormat={monthLabel} />} cursor={{ fill: "rgb(255 255 255 / 0.03)" }} />
+        <Legend verticalAlign="top" align="right" height={28} iconType="square"
+          formatter={(v) => <span className="text-[0.75rem] text-muted">{v}</span>} />
+        <Bar dataKey="Recurring" stackId="s" fill={C.lime2} maxBarSize={26} isAnimationActive={!reduced} />
+        <Bar dataKey="Everything else" stackId="s" fill={C.prev} radius={[4, 4, 0, 0]} maxBarSize={26} isAnimationActive={!reduced} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}

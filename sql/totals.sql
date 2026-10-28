@@ -8,16 +8,15 @@ SELECT
     MAX(transaction_date)                                                                     AS last_date,
     COALESCE(SUM(CASE WHEN direction = 'debit' THEN amount_paise END), 0)                      AS gross_debits_paise,
     COALESCE(SUM(CASE WHEN direction = 'credit' THEN amount_paise END), 0)                     AS total_credits_paise,
-    COALESCE(SUM(CASE WHEN transaction_type = 'expense' AND direction = 'debit' THEN amount_paise END), 0)
+    COALESCE(SUM(CASE WHEN {{is_expense}} THEN amount_paise END), 0)
                                                                                               AS expenditure_paise,
-    COALESCE(SUM(CASE WHEN transaction_type = 'refund' AND direction = 'credit' THEN amount_paise END), 0)
+    COALESCE(SUM(CASE WHEN {{is_refund}} THEN amount_paise END), 0)
                                                                                               AS refunds_paise,
-    COALESCE(SUM(CASE WHEN transaction_type = 'income' AND direction = 'credit' THEN amount_paise END), 0)
+    COALESCE(SUM(CASE WHEN {{is_income}} THEN amount_paise END), 0)
                                                                                               AS income_paise,
-    COALESCE(SUM(CASE WHEN transaction_type = 'transfer' THEN amount_paise END), 0)            AS transfers_paise,
-    COALESCE(SUM(CASE WHEN transaction_type = 'cc_repayment' THEN amount_paise END), 0)        AS cc_repayments_paise,
-    COALESCE(SUM(CASE WHEN transaction_type <> 'transfer'
-                      THEN CASE WHEN direction = 'credit' THEN amount_paise ELSE -amount_paise END END), 0)
+    COALESCE(SUM(CASE WHEN {{is_transfer}} THEN amount_paise END), 0)            AS transfers_paise,
+    COALESCE(SUM(CASE WHEN {{is_cc_repayment}} THEN amount_paise END), 0)        AS cc_repayments_paise,
+    COALESCE(SUM({{cash_flow_paise}}), 0)
                                                                                               AS net_cash_flow_paise,
     SUM(CASE WHEN categorization_method = 'none' THEN 1 ELSE 0 END)                           AS uncategorized_count,
     COALESCE(SUM(CASE WHEN categorization_method = 'none' AND direction = 'debit' THEN amount_paise END), 0)

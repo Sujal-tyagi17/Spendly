@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 
 from api.serialize import clean, records, transaction_rows
 from api.state import MODES, ConnectionManager, PreviewStore, SessionError, is_public
-from src import ai, analytics, anomaly_detector, config, database, insights, pipeline, subscription_detector
+from src import ai, analytics, anomaly_detector, config, database, insights, metrics, pipeline, subscription_detector
 from src.analytics import FilterError, Filters
 from src.categorizer import type_for_manual_category
 from src.pdf_parser import PasswordRequiredError, StatementError, supported_formats
@@ -393,6 +393,32 @@ def review_anomaly(transaction_id: int, body: AnomalyReview, c: CtxDep):
             raise HTTPException(404, "Transaction not found.")
         database.set_anomaly_review(conn, transaction_id, body.status)
         return {"ok": True}
+
+
+# --------------------------------------------------------------- analysis
+
+@app.get("/api/analysis")
+def analysis(c: CtxDep, f: FiltersDep, merchant_limit: Annotated[int, Query(ge=5, le=100)] = 25):
+    """Deeper SQL analytics: cash flow, category trends, merchants, concentration,
+    weekday/weekend and recurring share. Every figure comes from sql/*.sql."""
+    with c.conn() as conn:
+        start, end = analytics.analysis_range(conn, f)
+        candidates = _recurring(conn, f)
+        merchants = analytics.merchant_stats(conn, f)
+        return {
+            "range": clean({"start": start, "end": end}),
+            "totals": clean(analytics.totals(conn, f)),
+            "monthly": records(analytics.monthly_summary(conn, f).drop(columns=["month"], errors="ignore")),
+            "categories": records(analytics.category_spending(conn, f)),
+            "category_monthly": records(analytics.monthly_category(conn, f)),
+            "merchants": records(merchants.head(merchant_limit)),
+            "merchant_count": int(len(merchants)),
+            "concentration": clean(analytics.concentration(conn, f)),
+            "weekday": records(analytics.weekday_spending(conn, f)),
+            "weekend": records(analytics.weekend_split(conn, f)),
+            "recurring": clean(subscription_detector.recurring_spend(conn, f, candidates)),
+            "definitions": metrics.glossary(),
+        }
 
 
 # -------------------------------------------------------------- recurring

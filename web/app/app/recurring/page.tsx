@@ -79,7 +79,7 @@ export default function RecurringPage() {
 
   if (meta && meta.counts.transactions === 0) return <NoDataState />;
   if (error && !data) return <ErrorState message={error.message} onRetry={reload} />;
-  if (initialLoading || !data) return <div className="space-y-4" role="status" aria-label="Loading"><Skeleton className="h-36" /><div className="grid gap-4 md:grid-cols-2"><Skeleton className="h-64" /><Skeleton className="h-64" /></div></div>;
+  if (initialLoading || !data) return <div className="space-y-4" role="status" aria-label="Loading"><Skeleton className="h-36" /><div className="grid grid-cols-1 gap-4 md:grid-cols-2"><Skeleton className="h-64" /><Skeleton className="h-64" /></div></div>;
 
   const decide = async (merchant: string, decision: "confirmed" | "rejected" | null) => {
     setBusy(merchant);
@@ -108,7 +108,7 @@ export default function RecurringPage() {
     <div className="space-y-8">
       <Card className="relative overflow-hidden p-5 sm:p-7">
         <div aria-hidden="true" className="pointer-events-none absolute -top-24 -right-16 h-64 w-64 rounded-full bg-lime/[0.06] blur-3xl" />
-        <div className="grid gap-6 md:grid-cols-[1.2fr_1fr_1fr]">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-[1.2fr_1fr_1fr]">
           <div>
             <p className="eyebrow flex items-center gap-1">Estimated recurring spend
               <InfoTip label="estimated recurring spend">
@@ -140,7 +140,7 @@ export default function RecurringPage() {
         return (
           <section key={g.key} aria-labelledby={`rec-${g.key}`} className="space-y-4">
             <SectionHeader id={`rec-${g.key}`} title={`${g.title} (${items.length})`} subtitle={g.subtitle} />
-            <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3">
               {items.map((c) => <CandidateCard key={c.merchant} c={c} busy={busy === c.merchant} onDecide={decide} />)}
             </div>
           </section>

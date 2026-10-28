@@ -344,7 +344,7 @@ function Settings() {
     : "An unencrypted SQLite file on the computer running Spendly (data/spendly_user.db).";
 
   return (
-    <div className="grid gap-5 lg:grid-cols-2">
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
       <Card className="p-5 sm:p-6">
         <SectionHeader title="Privacy & storage" />
         <ul className="mt-4 space-y-3 text-[0.85rem] leading-relaxed text-muted">

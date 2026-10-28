@@ -36,6 +36,7 @@ export type CategoryRow = {
   expenditure_paise: number;
   avg_transaction_paise: number;
   share_pct: number | null;
+  spend_rank: number;
 };
 
 export type MerchantRow = {
@@ -195,3 +196,54 @@ export type ImportPreview = {
 };
 
 export type CommitResult = { statement_id: number; imported: number; skipped_duplicates: number; invalid: number; flagged_for_review: number };
+
+export type AnalysisMonth = MonthSummary & {
+  is_covered: number;
+  is_full_month: number;
+  prev_status: "none" | "not_covered" | "zero" | "value";
+  expenditure_change_paise: number | null;
+  cumulative_net_cash_flow_paise: number;
+  transfers_paise: number;
+  cc_repayments_paise: number;
+};
+
+export type CategoryMonth = {
+  month_start: string; category: string; expenditure_paise: number; transaction_count: number;
+  prev_expenditure_paise: number | null; change_paise: number | null; change_pct: number | null;
+  share_of_month_pct: number | null; share_of_change_pct: number | null; rank_in_month: number;
+};
+
+export type MerchantStat = {
+  merchant: string; category: string; transaction_count: number; expenditure_paise: number;
+  avg_transaction_paise: number; median_transaction_paise: number; first_seen: string; last_seen: string;
+  active_months: number; share_pct: number; cumulative_share_pct: number; spend_rank: number; frequency_rank: number;
+};
+
+export type WeekendRow = {
+  scope: string; weekday_paise: number; weekend_paise: number; weekday_txns: number; weekend_txns: number;
+  weekday_days: number; weekend_days: number; weekday_avg_txn_paise: number | null; weekend_avg_txn_paise: number | null;
+  weekday_per_day_paise: number | null; weekend_per_day_paise: number | null; weekend_share_pct: number | null;
+};
+
+export type AnalysisResponse = {
+  range: { start: string | null; end: string | null };
+  totals: Totals;
+  monthly: AnalysisMonth[];
+  categories: CategoryRow[];
+  category_monthly: CategoryMonth[];
+  merchants: MerchantStat[];
+  merchant_count: number;
+  concentration: {
+    merchant_count: number; expenditure_paise: number; top_1_share_pct: number | null; top_5_share_pct: number | null;
+    top_10_share_pct: number | null; hhi: number | null; hhi_level: "low" | "moderate" | "high" | null;
+    top_merchant: string | null; category_count: number; top_category: string | null; top_category_share_pct: number | null;
+  };
+  weekday: { weekday_name: string; transaction_count: number; expenditure_paise: number; avg_transaction_paise: number | null }[];
+  weekend: WeekendRow[];
+  recurring: {
+    merchants: string[]; estimated_monthly_paise: number; estimated_annual_paise: number; actual_recurring_paise: number;
+    total_expenditure_paise: number; share_of_expenditure_pct: number | null;
+    monthly: { month_start: string; recurring_paise: number; expenditure_paise: number; share_pct: number | null }[];
+  };
+  definitions: Record<string, string>;
+};

@@ -13,7 +13,7 @@ spend AS (
            SUM(amount_paise)                                 AS expenditure_paise,
            COUNT(DISTINCT transaction_date)                  AS active_days
     FROM base
-    WHERE transaction_type = 'expense' AND direction = 'debit'
+    WHERE {{is_expense}}
     GROUP BY 1
 )
 SELECT w.weekday_num,

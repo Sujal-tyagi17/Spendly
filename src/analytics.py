@@ -22,7 +22,7 @@ from functools import lru_cache
 
 import pandas as pd
 
-from src import config
+from src import config, metrics
 
 
 @dataclass(frozen=True)
@@ -92,8 +92,9 @@ def build_filter_clause(filters: Filters | None) -> tuple[str, dict]:
 
 @lru_cache(maxsize=None)
 def load_sql(name: str) -> str:
+    """Read a query and expand the shared metric definitions ({{is_expense}} etc.)."""
     path = config.SQL_DIR / f"{name}.sql"
-    return path.read_text(encoding="utf-8")
+    return metrics.render(path.read_text(encoding="utf-8"))
 
 
 def run_query(conn: sqlite3.Connection, name: str, filters: Filters | None = None,
@@ -138,7 +139,41 @@ def largest_transactions(conn, filters: Filters | None = None, limit: int = 10) 
 
 
 def monthly_category(conn, filters: Filters | None = None) -> pd.DataFrame:
+    """Category × month grid with each category's own month-over-month change."""
     return run_query(conn, "monthly_category", filters)
+
+
+def merchant_stats(conn, filters: Filters | None = None) -> pd.DataFrame:
+    """Per-merchant totals, counts, average & median ticket, share and cumulative share."""
+    return run_query(conn, "merchant_stats", filters)
+
+
+def concentration(conn, filters: Filters | None = None) -> dict:
+    """Top-1/5/10 merchant share, HHI and largest-category share (one row)."""
+    row = run_query(conn, "spending_concentration", filters).iloc[0].to_dict()
+    result = {k: (None if pd.isna(v) else v) for k, v in row.items()}
+    hhi = result.get("hhi")
+    # Conventional bands borrowed from competition analysis; descriptive only.
+    result["hhi_level"] = (None if hhi is None else "low" if hhi < 1500
+                           else "moderate" if hhi <= 2500 else "high")
+    return result
+
+
+def analysis_range(conn, filters: Filters | None = None) -> tuple[date | None, date | None]:
+    """The calendar window an analysis covers: the filter dates, else the data's span."""
+    lo, hi = date_bounds(conn)
+    start = (filters.start_date if filters and filters.start_date else lo)
+    end = (filters.end_date if filters and filters.end_date else hi)
+    return start, end
+
+
+def weekend_split(conn, filters: Filters | None = None) -> pd.DataFrame:
+    """Weekday vs weekend totals, averages and per-calendar-day spend, overall and per category."""
+    start, end = analysis_range(conn, filters)
+    return run_query(conn, "weekend_split", filters, {
+        "range_start": start.isoformat() if start else None,
+        "range_end": end.isoformat() if end else None,
+    })
 
 
 def uncategorized(conn, filters: Filters | None = None) -> pd.DataFrame:
