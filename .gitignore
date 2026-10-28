@@ -1,0 +1,26 @@
+# Local databases — may contain your real transactions. Never commit them.
+data/*.db
+data/*.db-journal
+*.db
+*.sqlite
+
+# Secrets
+.env
+.streamlit/secrets.toml
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# OS / editors
+.DS_Store
+.vscode/
+.idea/
+
+# Never commit real statements
+uploads/
+*.real.pdf
