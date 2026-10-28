@@ -70,6 +70,12 @@ class Insight:
     text: str
     tone: str = "neutral"  # neutral | up | down | warning | good
     facts: dict = field(default_factory=dict)
+    # Structured fields for richer UIs (all optional, all computed — never free text):
+    period: str | None = None          # human label of the period the insight covers
+    value_paise: int | None = None     # the headline amount
+    value_pct: float | None = None     # the headline percentage, if any
+    subject: str | None = None         # category / merchant the insight is about
+    link: dict | None = None           # transaction filters that reproduce the insight
 
 
 def _month_end(d: date) -> date:
@@ -149,73 +155,139 @@ def describe_change(comp: PeriodComparison) -> Insight:
     return Insight("overall_change", "Change vs previous period", text, tone, facts)
 
 
+def _period_label(filters: Filters, totals: dict) -> str:
+    start = filters.start_date or (date.fromisoformat(totals["first_date"]) if totals.get("first_date") else None)
+    end = filters.end_date or (date.fromisoformat(totals["last_date"]) if totals.get("last_date") else None)
+    if not start or not end:
+        return "Selected period"
+    return f"{start.strftime('%d %b %Y')} – {end.strftime('%d %b %Y')}"
+
+
+def _range(start: date, end: date) -> dict:
+    return {"start": start.isoformat(), "end": end.isoformat()}
+
+
 def build_insights(conn, filters: Filters | None = None, recurring=None, anomalies: pd.DataFrame | None = None) -> list[Insight]:
-    """All deterministic insight templates, in display order."""
+    """All deterministic insight templates, in display order.
+
+    Every insight carries the computed value, the period it covers and a
+    ``link`` (transaction filters) so a UI can show the rows behind it.
+    """
     filters = filters or Filters()
     insights: list[Insight] = []
     totals = analytics.totals(conn, filters)
     if not totals["transaction_count"]:
         return insights
+    period = _period_label(filters, totals)
+    base_link = {}
+    if filters.start_date:
+        base_link["start"] = filters.start_date.isoformat()
+    if filters.end_date:
+        base_link["end"] = filters.end_date.isoformat()
 
     comp = compare_periods(conn, filters)
     if comp is not None:
-        insights.append(describe_change(comp))
+        change = describe_change(comp)
+        change.period = f"{comp.current_label} vs {comp.previous_label}"
+        change.value_paise = comp.change_paise
+        change.value_pct = comp.change_pct
+        change.subject = change.facts.get("top_driver")
+        change.link = {**_range(*comp.current), "types": ["expense"]}
+        insights.append(change)
         cats = comp.categories
         if not cats.empty:
             inc = cats[cats["change_paise"] > 0]
             if not inc.empty:
                 r = inc.iloc[0]
                 pct = f" ({r['change_pct']:+.0f}%)" if pd.notna(r["change_pct"]) else " (new this period)"
-                insights.append(Insight("biggest_increase", "Biggest increase",
-                                        f"{r['category']} rose by {format_inr(r['change_paise'])}{pct}.", "up",
-                                        {"category": r["category"], "change_paise": int(r["change_paise"])}))
+                insights.append(Insight(
+                    "biggest_increase", "Biggest increase",
+                    f"{r['category']} rose by {format_inr(r['change_paise'])}{pct}.", "up",
+                    {"category": r["category"], "change_paise": int(r["change_paise"])},
+                    period=f"{comp.current_label} vs {comp.previous_label}",
+                    value_paise=int(r["change_paise"]),
+                    value_pct=float(r["change_pct"]) if pd.notna(r["change_pct"]) else None,
+                    subject=r["category"],
+                    link={**_range(*comp.current), "categories": [r["category"]], "types": ["expense"]}))
             dec = cats[cats["change_paise"] < 0].sort_values("change_paise")
             if not dec.empty:
                 r = dec.iloc[0]
-                insights.append(Insight("biggest_decrease", "Biggest decrease",
-                                        f"{r['category']} fell by {format_inr(abs(r['change_paise']))}"
-                                        f" ({r['change_pct']:+.0f}%).", "down",
-                                        {"category": r["category"], "change_paise": int(r["change_paise"])}))
+                insights.append(Insight(
+                    "biggest_decrease", "Biggest decrease",
+                    f"{r['category']} fell by {format_inr(abs(r['change_paise']))}"
+                    f" ({r['change_pct']:+.0f}%).", "down",
+                    {"category": r["category"], "change_paise": int(r["change_paise"])},
+                    period=f"{comp.current_label} vs {comp.previous_label}",
+                    value_paise=int(r["change_paise"]),
+                    value_pct=float(r["change_pct"]) if pd.notna(r["change_pct"]) else None,
+                    subject=r["category"],
+                    link={**_range(*comp.previous), "categories": [r["category"]], "types": ["expense"]}))
 
     cats_all = analytics.category_spending(conn, filters)
     if not cats_all.empty:
         r = cats_all.iloc[0]
-        insights.append(Insight("largest_category", "Largest category",
-                                f"{r['category']} is your largest spending category: {format_inr(r['expenditure_paise'])}"
-                                f" ({r['share_pct']:.0f}% of expenditure).", facts={"category": r["category"]}))
+        insights.append(Insight(
+            "largest_category", "Largest category",
+            f"{r['category']} is your largest spending category: {format_inr(r['expenditure_paise'])}"
+            f" ({r['share_pct']:.0f}% of expenditure).", facts={"category": r["category"]},
+            period=period, value_paise=int(r["expenditure_paise"]), value_pct=float(r["share_pct"]),
+            subject=r["category"], link={**base_link, "categories": [r["category"]], "types": ["expense"]}))
+
+    merchants = analytics.top_merchants(conn, filters, limit=1)
+    if not merchants.empty:
+        r = merchants.iloc[0]
+        insights.append(Insight(
+            "top_merchant", "Largest merchant",
+            f"{r['merchant']} received the most money: {format_inr(r['expenditure_paise'])} across "
+            f"{int(r['transaction_count'])} payments ({r['share_pct']:.0f}% of expenditure).",
+            facts={"merchant": r["merchant"]}, period=period, value_paise=int(r["expenditure_paise"]),
+            value_pct=float(r["share_pct"]), subject=r["merchant"],
+            link={**base_link, "merchants": [r["merchant"]], "types": ["expense"]}))
 
     weekdays = analytics.weekday_spending(conn, filters)
     if not weekdays.empty and weekdays["expenditure_paise"].sum() > 0:
         r = weekdays.sort_values("expenditure_paise", ascending=False).iloc[0]
-        insights.append(Insight("top_weekday", "Highest-spending weekday",
-                                f"You spend the most on {r['weekday_name']}s: {format_inr(r['expenditure_paise'])} "
-                                f"across {int(r['transaction_count'])} payments.", facts={"weekday": r["weekday_name"]}))
+        insights.append(Insight(
+            "top_weekday", "Highest-spending weekday",
+            f"You spend the most on {r['weekday_name']}s: {format_inr(r['expenditure_paise'])} "
+            f"across {int(r['transaction_count'])} payments.", facts={"weekday": r["weekday_name"]},
+            period=period, value_paise=int(r["expenditure_paise"]), subject=r["weekday_name"]))
 
     largest = analytics.largest_transactions(conn, filters, limit=1)
     if not largest.empty:
         r = largest.iloc[0]
-        insights.append(Insight("largest_transaction", "Largest payment",
-                                f"Your largest payment was {format_inr(r['amount_paise'])} to {r['merchant']} "
-                                f"on {r['transaction_date']}.", facts={"id": int(r["id"])}))
+        insights.append(Insight(
+            "largest_transaction", "Largest payment",
+            f"Your largest payment was {format_inr(r['amount_paise'])} to {r['merchant']} "
+            f"on {r['transaction_date']}.", facts={"id": int(r["id"])},
+            period=period, value_paise=int(r["amount_paise"]), subject=r["merchant"],
+            link={"start": r["transaction_date"], "end": r["transaction_date"], "merchants": [r["merchant"]]}))
 
     if recurring:
         from src.subscription_detector import recurring_monthly_total
         active = [c for c in recurring if c.status in {"confirmed", "high_confidence"} and not c.possibly_stopped]
         if active:
             monthly = recurring_monthly_total(recurring)
-            insights.append(Insight("recurring", "Recurring payments",
-                                    f"{len(active)} recurring payments cost about {format_inr(monthly)} a month "
-                                    f"(≈ {format_inr(monthly * 12)} a year, estimated).", facts={"count": len(active)}))
+            insights.append(Insight(
+                "recurring", "Recurring payments",
+                f"{len(active)} recurring payments cost about {format_inr(monthly)} a month "
+                f"(≈ {format_inr(monthly * 12)} a year, estimated).", facts={"count": len(active)},
+                period=period, value_paise=monthly, subject=f"{len(active)} payments"))
 
     if totals["uncategorized_count"]:
-        insights.append(Insight("uncategorized", "Needs categories",
-                                f"{int(totals['uncategorized_count'])} transactions "
-                                f"({format_inr(totals['uncategorized_debits_paise'])} of debits) are uncategorized. "
-                                "Fix them on the Transactions page to sharpen every chart.", "warning"))
+        insights.append(Insight(
+            "uncategorized", "Needs categories",
+            f"{int(totals['uncategorized_count'])} transactions "
+            f"({format_inr(totals['uncategorized_debits_paise'])} of debits) are uncategorized. "
+            "Fix them on the Transactions page to sharpen every chart.", "warning",
+            period=period, value_paise=int(totals["uncategorized_debits_paise"]),
+            link={**base_link, "statuses": ["uncategorized"]}))
 
     if anomalies is not None and not anomalies.empty:
-        insights.append(Insight("unusual", "Unusual payments",
-                                f"{len(anomalies)} payment(s) are much larger than your usual spending at the same "
-                                "merchant or in the same category. Unusual doesn't mean fraudulent — review them on "
-                                "the Spending Insights page.", "warning"))
+        insights.append(Insight(
+            "unusual", "Unusual payments",
+            f"{len(anomalies)} payment(s) are much larger than your usual spending at the same "
+            "merchant or in the same category. Unusual doesn't mean fraudulent — review them on "
+            "the Spending Insights page.", "warning", period=period,
+            value_paise=int(anomalies["amount_paise"].max())))
     return insights

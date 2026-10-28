@@ -33,6 +33,9 @@ class Filters:
     transaction_types: tuple[str, ...] = field(default_factory=tuple)
     merchants: tuple[str, ...] = field(default_factory=tuple)
     search: str = ""
+    # Review-status filters for the transaction explorer:
+    # "needs_review" | "possible_duplicate" | "uncategorized" | "reviewed"
+    statuses: tuple[str, ...] = field(default_factory=tuple)
 
     def without_dates(self) -> "Filters":
         return replace(self, start_date=None, end_date=None)
@@ -65,6 +68,19 @@ def build_filter_clause(filters: Filters | None) -> tuple[str, dict]:
             names = [f"{prefix}{i}" for i in range(len(values))]
             clauses.append(f"{column} IN ({', '.join(':' + n for n in names)})")
             params.update(dict(zip(names, values)))
+
+    status_sql = {
+        "needs_review": "review_status = 'needs_review'",
+        "possible_duplicate": "is_possible_duplicate = 1",
+        "uncategorized": "categorization_method = 'none'",
+        "reviewed": "review_status = 'reviewed'",
+    }
+    unknown = set(filters.statuses) - set(status_sql)
+    if unknown:
+        raise FilterError(f"Unknown status filter: {sorted(unknown)}")
+    if filters.statuses:
+        # Fixed SQL fragments chosen from a whitelist; no user text reaches the query.
+        clauses.append("(" + " OR ".join(status_sql[s] for s in filters.statuses) + ")")
 
     if filters.search.strip():
         clauses.append("(description LIKE :f_search OR normalized_merchant LIKE :f_search)")
@@ -147,11 +163,33 @@ def period_change(conn, name: str, filters: Filters | None, current: tuple[date,
     })
 
 
-def transactions(conn, filters: Filters | None = None) -> pd.DataFrame:
+SORTABLE_COLUMNS = {
+    "date": "transaction_date",
+    "merchant": "normalized_merchant",
+    "category": "category",
+    "type": "transaction_type",
+    # Signed amount so "amount" sorts money-in above money-out.
+    "amount": "(CASE WHEN direction = 'credit' THEN amount_paise ELSE -amount_paise END)",
+}
+
+
+def transactions(conn, filters: Filters | None = None, sort: str = "date", descending: bool = True,
+                 limit: int | None = None, offset: int = 0) -> pd.DataFrame:
     clause, params = build_filter_clause(filters)
+    if sort not in SORTABLE_COLUMNS:
+        raise FilterError(f"Cannot sort by {sort!r}")
+    direction = "DESC" if descending else "ASC"
     sql = ("SELECT * FROM transactions WHERE 1 = 1" + clause +
-           " ORDER BY transaction_date DESC, id DESC")
+           f" ORDER BY {SORTABLE_COLUMNS[sort]} {direction}, id {direction}")
+    if limit is not None:
+        sql += " LIMIT :_limit OFFSET :_offset"
+        params = {**params, "_limit": int(limit), "_offset": int(offset)}
     return pd.read_sql_query(sql, conn, params=params)
+
+
+def count_transactions(conn, filters: Filters | None = None) -> int:
+    clause, params = build_filter_clause(filters)
+    return int(conn.execute("SELECT COUNT(*) FROM transactions WHERE 1 = 1" + clause, params).fetchone()[0])
 
 
 def distinct_values(conn, column: str) -> list[str]:

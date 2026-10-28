@@ -70,3 +70,16 @@ def test_filters_respected_in_insights(demo_conn):
 def test_empty_database_has_no_insights(empty_conn):
     assert insights.build_insights(empty_conn) == []
     assert compare_periods(empty_conn) is None
+
+
+def test_insights_carry_structured_fields_that_reproduce_them(demo_conn):
+    items = {i.key: i for i in insights.build_insights(demo_conn)}
+    largest = items["largest_category"]
+    assert largest.subject == "Rent & Housing" and largest.value_paise == 10_800_000
+    # Following the link gives exactly the amount the insight states.
+    link = largest.link
+    f = Filters(categories=tuple(link["categories"]), transaction_types=tuple(link["types"]))
+    assert analytics.totals(demo_conn, f)["expenditure_paise"] == largest.value_paise
+    change = items["overall_change"]
+    assert change.value_pct == -60.8 and "September 2026" in change.period
+    assert items["top_merchant"].subject == "House Rent"

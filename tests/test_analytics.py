@@ -149,3 +149,17 @@ def test_sql_filter_values_are_parameterized(small_conn):
     evil = Filters(search="'; DROP TABLE transactions; --", categories=("x') OR 1=1 --",))
     assert analytics.transactions(small_conn, evil).empty
     assert analytics.totals(small_conn)["transaction_count"] == 9  # table still intact
+
+
+def test_status_filters_sorting_and_paging(demo_conn):
+    dup = analytics.transactions(demo_conn, Filters(statuses=("possible_duplicate",)))
+    assert len(dup) == 1 and dup.iloc[0]["normalized_merchant"] == "Chai Point Koramangala"
+    assert analytics.count_transactions(demo_conn, Filters(statuses=("uncategorized",))) == 24
+    biggest = analytics.transactions(demo_conn, sort="amount", descending=True, limit=1)
+    assert biggest.iloc[0]["transaction_type"] == "income"  # largest money-in first
+    page2 = analytics.transactions(demo_conn, limit=10, offset=10)
+    assert len(page2) == 10
+    with pytest.raises(FilterError):
+        analytics.transactions(demo_conn, sort="amount_paise; DROP TABLE transactions")
+    with pytest.raises(FilterError):
+        analytics.count_transactions(demo_conn, Filters(statuses=("bogus",)))
