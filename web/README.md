@@ -116,6 +116,10 @@ they must only ever hold public URLs. Invalid values fall back to the defaults.
   only possible in My data.
 - **Import:** choose a PDF, read it, review the preview, then import. Nothing is saved before you confirm.
 - **Editing:** single rows, or a whole merchant after a confirmation that shows the exact number of affected rows.
+- **Budget Planner** (`/app/budgets`) has its own month picker instead of the global filters. It covers
+  create, edit, delete (with confirmation), copying from the previous month, a drivers panel, and an empty
+  state. Status is always shown with text and an icon, not colour alone, and both charts have a table view.
+  All numbers come from `/api/budgets`.
 - **Count-up** animates only on first load. Later filter changes update numbers instantly.
 
 ## Content rules

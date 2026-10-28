@@ -92,7 +92,20 @@ class AISettings:
 # databases that vanish with their session, so nobody can see anyone else's data.
 PUBLIC_DEPLOYMENT = _env_bool("SPENDLY_PUBLIC_DEPLOYMENT", False)
 
+@dataclass(frozen=True)
+class BudgetSettings:
+    """Thresholds for budget statuses and insights. These are display conventions,
+    not financial advice — change them to suit yourself."""
+    near_threshold_pct: float = float(os.getenv("SPENDLY_BUDGET_NEAR_PCT", 80))
+    pace_min_days: int = _env_int("SPENDLY_BUDGET_PACE_MIN_DAYS", 7)
+    pace_tolerance_pct: float = 10.0       # within ±10% of the even pace counts as "on pace"
+    repeat_window_months: int = 3          # look back this many months (incl. the selected one)
+    repeat_min_months: int = 2             # over budget in at least this many of them
+    max_amount_paise: int = 10_00_00_000_00  # ₹10 crore — a sanity limit, not a rule
+
+
 UPLOAD = UploadSettings()
+BUDGET = BudgetSettings()
 RECURRING = RecurringSettings()
 ANOMALY = AnomalySettings()
 
@@ -135,6 +148,9 @@ CATEGORIES = [
 ]
 
 UNCATEGORIZED = "Other"
+
+# Categories that can hold a spending budget (money-in and movement categories can't).
+BUDGET_CATEGORIES = [c for c in CATEGORIES if c not in {"Income", "Transfers", "Refunds"}]
 
 TRANSACTION_TYPES = {
     "expense": "Expense",

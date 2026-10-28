@@ -190,6 +190,32 @@ day calendar counts the actual days in the period, and spend per day is the fair
 It's the sum of squared % shares: from near 0 (spread out) to 10,000 (one merchant). It's descriptive, one big
 fixed cost like rent can dominate it, and it depends on how well merchant names were normalized.
 
+## Budget Planner
+
+**31. How is utilisation defined, and what happens with a ₹0 budget?**
+Actual ÷ budget × 100, where actual uses the same `{{is_expense}}` rule as the rest of the app. With a ₹0
+budget the percentage is undefined, so the SQL returns NULL (`CASE WHEN budget > 0`) instead of dividing by
+zero. Any spending against a ₹0 budget still counts as over budget, and the rupee variance is shown.
+
+**32. Why don't refunds reduce a category's spending?**
+A refund lands in the Refunds category, and statements don't link it back to the original purchase. Guessing
+the link would make category numbers unreliable, so refunds are shown separately with a net figure.
+
+**33. How do you stop duplicate budgets?**
+Validation in Python, backed by the database: a unique index on `(month, COALESCE(category, '*'))`. The
+`COALESCE` matters because SQLite treats NULLs as distinct, so without it you could add two overall budgets.
+The API turns the violation into a 409.
+
+**34. What if the month isn't over yet?**
+The month is marked partial and figures say "so far". A linear pace projection appears only if the data starts
+on day 1 and covers at least 7 days, and it's labelled as an estimate. Partial months are left out of
+month-on-month and repeated-overspend comparisons.
+
+**35. How do you know the budget numbers match the rest of the app?**
+A test checks that, for every demo month, each category's actual equals `category_spending` and the overall
+equals `totals` for the same dates. Python rounds percentages half away from zero, like SQLite's `ROUND`,
+because an early test caught 148.25 showing as 148.3 in SQL and 148.2 in Python.
+
 ## Numbers worth knowing (demo data)
 - 285 synthetic rows, April–September 2026. One exact duplicate is skipped, so 284 are imported.
 - The August spike comes from a ₹54,999 laptop. It's flagged as unusual at 28× the usual Amazon payment.

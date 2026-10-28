@@ -224,7 +224,10 @@ def load_demo_dataset(conn: sqlite3.Connection, csv_path: Path = config.SAMPLE_C
     database.clear_all_data(conn)
     preview = prepare_csv_rows_import(text, display_name="Synthetic demo statement", conn=conn,
                                       period=(start, end))
-    return commit_import(conn, preview)
+    statement_id = commit_import(conn, preview)
+    from src.budgets import seed_demo_budgets  # local import: budgets depends on analytics
+    seed_demo_budgets(conn)
+    return statement_id
 
 
 def _month_end(iso_date: str) -> str:

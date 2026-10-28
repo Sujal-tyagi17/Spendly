@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 
 from api.serialize import clean, records, transaction_rows
 from api.state import MODES, ConnectionManager, PreviewStore, SessionError, is_public
-from src import ai, analytics, anomaly_detector, config, database, insights, metrics, pipeline, subscription_detector
+from src import ai, analytics, anomaly_detector, budgets, config, database, insights, metrics, pipeline, subscription_detector
 from src.analytics import FilterError, Filters
 from src.categorizer import type_for_manual_category
 from src.pdf_parser import PasswordRequiredError, StatementError, supported_formats
@@ -419,6 +419,110 @@ def analysis(c: CtxDep, f: FiltersDep, merchant_limit: Annotated[int, Query(ge=5
             "recurring": clean(subscription_detector.recurring_spend(conn, f, candidates)),
             "definitions": metrics.glossary(),
         }
+
+
+# ---------------------------------------------------------------- budgets
+
+def _budget_call(fn, *args, **kwargs):
+    try:
+        return fn(*args, **kwargs)
+    except budgets.DuplicateBudgetError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except budgets.BudgetError as exc:
+        status = 404 if "not found" in str(exc) else 400
+        raise HTTPException(status, str(exc)) from exc
+
+
+def _month_param(month: str | None, conn) -> str:
+    return _budget_call(budgets.normalize_month, month) if month else budgets.default_month(conn)
+
+
+@app.get("/api/budgets/months")
+def budget_months(c: CtxDep):
+    """Months that have statement data or budgets, newest first."""
+    with c.conn() as conn:
+        monthly = analytics.monthly_summary(conn, None)
+        data_months = {str(m)[:7] for m in monthly["month_start"]} if not monthly.empty else set()
+        budget_months_ = {r[0][:7] for r in conn.execute("SELECT DISTINCT month FROM budgets")}
+        months = sorted(data_months | budget_months_, reverse=True)
+        return {"months": [{"month": m, "has_data": m in data_months, "has_budgets": m in budget_months_}
+                           for m in months],
+                "default": budgets.default_month(conn)[:7]}
+
+
+@app.get("/api/budgets")
+def budget_report(c: CtxDep, month: str | None = None):
+    with c.conn() as conn:
+        m = _month_param(month, conn)
+        report = budgets.month_report(conn, m)
+        prev = budgets.shift_month(m, -1)
+        return clean({
+            **report,
+            "previous_month": prev,
+            "previous_has_budgets": bool(budgets.list_budgets(conn, prev)),
+            "insights": budgets.insights(conn, m, report),
+            "history": budgets.history(conn, m),
+            "categories": config.BUDGET_CATEGORIES,
+            "settings": {"near_threshold_pct": config.BUDGET.near_threshold_pct,
+                         "pace_min_days": config.BUDGET.pace_min_days,
+                         "pace_tolerance_pct": config.BUDGET.pace_tolerance_pct,
+                         "repeat_window_months": config.BUDGET.repeat_window_months,
+                         "repeat_min_months": config.BUDGET.repeat_min_months},
+        })
+
+
+class BudgetCreate(BaseModel):
+    month: str = Field(min_length=7, max_length=10)
+    category: str | None = Field(default=None, max_length=60)
+    amount: str | float | int
+
+
+class BudgetPatch(BaseModel):
+    amount: str | float | int
+
+
+class BudgetCopy(BaseModel):
+    from_month: str = Field(min_length=7, max_length=10)
+    to_month: str = Field(min_length=7, max_length=10)
+    overwrite: bool = False
+
+
+@app.post("/api/budgets", status_code=201)
+def budget_create(body: BudgetCreate, c: CtxDep):
+    with c.conn() as conn:
+        budget_id = _budget_call(budgets.create_budget, conn, body.month, body.category, body.amount)
+        return clean(budgets.get_budget(conn, budget_id))
+
+
+@app.patch("/api/budgets/{budget_id}")
+def budget_update(budget_id: int, body: BudgetPatch, c: CtxDep):
+    with c.conn() as conn:
+        _budget_call(budgets.update_budget, conn, budget_id, body.amount)
+        return clean(budgets.get_budget(conn, budget_id))
+
+
+@app.delete("/api/budgets/{budget_id}")
+def budget_delete(budget_id: int, c: CtxDep):
+    with c.conn() as conn:
+        _budget_call(budgets.delete_budget, conn, budget_id)
+        return {"ok": True}
+
+
+@app.post("/api/budgets/copy")
+def budget_copy(body: BudgetCopy, c: CtxDep):
+    with c.conn() as conn:
+        return _budget_call(budgets.copy_budgets, conn, body.from_month, body.to_month, body.overwrite)
+
+
+@app.get("/api/budgets/drivers")
+def budget_drivers(c: CtxDep, category: Annotated[str, Query(max_length=60)], month: str | None = None):
+    if category not in config.BUDGET_CATEGORIES:
+        raise HTTPException(400, f"Unknown category: {category}")
+    with c.conn() as conn:
+        m = _month_param(month, conn)
+        d = budgets.drivers(conn, m, category)
+        return {"month": m, "category": category, "merchants": records(d["merchants"]),
+                "change": records(d["change"]), "largest": records(d["largest"])}
 
 
 # -------------------------------------------------------------- recurring

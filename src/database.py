@@ -102,6 +102,19 @@ CREATE TABLE IF NOT EXISTS anomaly_reviews (
     reviewed_at    TEXT NOT NULL
 );
 
+-- Monthly budgets. category NULL = the overall monthly budget.
+-- One budget per (month, category): enforced by the expression index below,
+-- because a plain UNIQUE constraint would allow several NULL (overall) rows.
+CREATE TABLE IF NOT EXISTS budgets (
+    id           INTEGER PRIMARY KEY,
+    month        TEXT NOT NULL CHECK (month GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]-01'),
+    category     TEXT REFERENCES categories(category_name),
+    amount_paise INTEGER NOT NULL CHECK (amount_paise >= 0),
+    created_at   TEXT NOT NULL,
+    updated_at   TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_budget_month_category ON budgets(month, COALESCE(category, '*'));
+
 -- Log of manual category corrections (for the Data Quality page).
 CREATE TABLE IF NOT EXISTS manual_corrections (
     id             INTEGER PRIMARY KEY,
@@ -286,7 +299,7 @@ def clear_all_data(conn: sqlite3.Connection) -> None:
     """Delete every imported statement, transaction and decision."""
     with transaction(conn):
         for table in ("anomaly_reviews", "manual_corrections", "import_issues",
-                      "transactions", "statements", "recurring_decisions"):
+                      "transactions", "statements", "recurring_decisions", "budgets"):
             conn.execute(f"DELETE FROM {table}")  # fixed table names, not user input
     conn.execute("VACUUM")  # actually shrink the file so deleted rows don't linger
 

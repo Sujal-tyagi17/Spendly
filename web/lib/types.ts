@@ -247,3 +247,89 @@ export type AnalysisResponse = {
   };
   definitions: Record<string, string>;
 };
+
+// ------------------------------------------------------------- budget planner
+
+export type BudgetStatus = "over" | "at_limit" | "near" | "within" | "no_budget" | "no_data";
+
+export type BudgetPace = {
+  is_estimate: true;
+  days_elapsed: number;
+  days_remaining: number;
+  projected_paise: number;
+  expected_to_date_paise: number | null;
+  pace: "faster" | "slower" | "on_pace" | null;
+  pace_pct?: number;
+};
+
+export type BudgetRow = {
+  category: string;
+  budget_id: number | null;
+  budget_paise: number | null;
+  actual_paise: number;
+  transaction_count: number;
+  remaining_paise: number | null;
+  variance_paise: number | null;
+  utilisation_pct: number | null;
+  variance_pct: number | null;
+  status: BudgetStatus;
+  pace: BudgetPace | null;
+};
+
+export type BudgetOverall = {
+  overall_budget_id: number | null;
+  overall_budget_paise: number | null;
+  category_budgets_paise: number;
+  budgeted_category_count: number;
+  expenditure_paise: number;
+  refunds_paise: number;
+  net_expenditure_paise: number;
+  unbudgeted_paise: number;
+  remaining_paise: number | null;
+  variance_paise: number | null;
+  utilisation_pct: number | null;
+  variance_pct: number | null;
+  status: BudgetStatus;
+  pace: BudgetPace | null;
+};
+
+export type BudgetInsight = {
+  key: string;
+  kind: "observed" | "estimate";
+  tone: "neutral" | "up" | "down" | "warning";
+  title: string;
+  text: string;
+  link: InsightLink | null;
+};
+
+export type BudgetCoverage = {
+  is_covered: boolean;
+  is_full: boolean;
+  covered_from: string | null;
+  covered_to: string | null;
+  days_covered: number;
+  days_in_month: number;
+};
+
+export type BudgetReport = {
+  month: string;
+  coverage: BudgetCoverage;
+  rows: BudgetRow[];
+  overall: BudgetOverall;
+  previous_month: string;
+  previous_has_budgets: boolean;
+  insights: BudgetInsight[];
+  history: { month: string; budget_paise: number | null; budget_basis: string | null; actual_paise: number; is_full: boolean }[];
+  categories: string[];
+  settings: { near_threshold_pct: number; pace_min_days: number; pace_tolerance_pct: number; repeat_window_months: number; repeat_min_months: number };
+};
+
+export type BudgetMonths = { months: { month: string; has_data: boolean; has_budgets: boolean }[]; default: string };
+
+export type BudgetDrivers = {
+  month: string;
+  category: string;
+  merchants: { merchant: string; transaction_count: number; expenditure_paise: number; share_pct: number }[];
+  change: { merchant: string; current_paise: number; previous_paise: number; change_paise: number; change_pct: number | null }[];
+  largest: { id: number; transaction_date: string; merchant?: string; normalized_merchant?: string; amount_paise: number }[];
+};

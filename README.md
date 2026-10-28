@@ -43,7 +43,8 @@ money in JavaScript.
 10. [Analytics methodology & metric definitions](#16-analytics-methodology) · 11. [SQL concepts](#17-sql-concepts-demonstrated) ·
 12. [Recurring payments](#18-recurring-payment-detection) · 13. [Anomaly detection](#19-anomaly-detection) ·
 14. [Privacy](#20-privacy-and-security) · 15. [Optional AI](#21-optional-ai-setup) · 16. [Deployment](#22-deployment) ·
-17. [Limitations](#23-known-limitations) · 18. [Future work](#24-future-improvements)
+17. [Limitations](#23-known-limitations) · 18. [Future work](#24-future-improvements) ·
+19. [Budget Planner](#budget-planner)
 
 ---
 
@@ -71,13 +72,14 @@ visibly flagged for review.
 | **Validation** | **Running-balance check** (`previous balance ± amount = printed balance`) to catch mis-read or missing rows; per-row issue reasons; data-quality report. |
 | **Duplicates** | *Exact* duplicates (same balance or transaction ID — overlapping statements, repeated rows) are skipped; *possible* duplicates (two ₹20 chais on one day) are imported and flagged — never deleted automatically. Re-importing the same file is blocked by hash. |
 | **Categorization** | Rule registry in `config/rules.json` (55+ Indian merchants, transfer / card-bill / refund / salary rules). Debits aren't all expenses; credits aren't all income. Optional Gemini fallback for unknown merchants. Manual corrections, with "apply to all from this merchant". |
-| **SQL analytics** | 15 documented `.sql` files: CTEs, recursive CTEs, window functions (`LAG`, `RANK`, `DENSE_RANK`, running `SUM() OVER`), a SQLite median, conditional aggregation. Metric definitions live in one place (`src/metrics.py`). |
+| **SQL analytics** | 17 documented `.sql` files: CTEs, recursive CTEs, window functions (`LAG`, `RANK`, `DENSE_RANK`, running `SUM() OVER`), a SQLite median, conditional aggregation. Metric definitions live in one place (`src/metrics.py`). |
 | **Spending intelligence** | "Your expenditure increased by 18%… Food & Dining contributed the largest share" — computed from equal-length periods (partial months compared fairly), with safe zero-denominator handling. |
 | **Recurring payments** | Interval + amount-stability detection (weekly / monthly / quarterly / yearly), confidence levels, rationale, estimated monthly/annual cost, "may have been cancelled" hints, confirm/reject controls. |
+| **Budget Planner** | Monthly budgets per category plus an overall budget: budget vs actual, utilisation, variance, status, copy from the previous month, a drivers panel, and observed insights kept separate from a clearly labelled pace estimate. Partial and missing months are handled honestly. |
 | **Anomalies** | Interpretable IQR rule against the same merchant's or category's history, with a plain-English reason. Never labelled fraud. Dismiss / mark expected. |
 | **Dashboard** | 6 Streamlit pages, Plotly charts with Indian rupee formatting (₹1.2L, ₹45K), sidebar filters shared by every page, editable transaction table, CSV export, empty states everywhere. |
 | **Privacy** | PDFs processed in memory and never saved, identifiers masked before storage, nothing sensitive logged, demo and user data in separate databases, one-click delete, private per-visitor databases on public hosting. |
-| **Tests** | 190+ pytest tests on synthetic data, including hand-computed analytics, a ground-truth check of the whole pipeline and the HTTP API. |
+| **Tests** | 240+ pytest tests on synthetic data, including hand-computed analytics, a ground-truth check of the whole pipeline and the HTTP API. |
 
 ## 4. Screenshots
 
@@ -213,6 +215,7 @@ pytest
 | `recurring_decisions` | your confirm / reject choices per merchant |
 | `anomaly_reviews` | dismissed / expected alerts, so they don't come back |
 | `manual_corrections` | audit log of every manual change |
+| `budgets` | one row per month and category (`category` NULL = overall budget), `amount_paise` ≥ 0. A unique index on `(month, COALESCE(category, '*'))` blocks duplicates |
 
 Constraints (`CHECK amount_paise > 0`, `direction IN (...)`, foreign keys) and indexes on date, category,
 merchant, statement and fingerprint are created automatically. Imports run in a single database
@@ -507,7 +510,6 @@ Don't upload real statements to a public instance you don't control — run Spen
 ## 24. Future improvements
 
 - More parsers (HDFC/SBI/ICICI layouts, Google Pay & Paytm exports, credit-card statements) and OCR for scans.
-- Budgets per category with alerts.
 - Learn merchant rules from manual corrections automatically.
 - Optional encryption of the local database.
 - Export a monthly PDF report.
@@ -607,3 +609,78 @@ clears every in-memory session.
 `docs/INTERVIEW_GUIDE.md` walks through the design decisions and the questions this project is built to answer.
 
 *All data shown in this repository is synthetic. No real person's financial information is included.*
+
+---
+
+## Budget Planner
+
+Plan a budget per category (and/or one overall budget) for any month, then compare it with what your
+statements show you actually spent. Page: **/app/budgets** · logic: `src/budgets.py` · SQL:
+`sql/budget_vs_actual.sql`, `sql/budget_overall.sql` · tests: `tests/test_budgets.py`.
+
+### Metric definitions
+
+| Metric | Formula | Notes |
+|---|---|---|
+| Actual | sum of `{{is_expense}}` rows in the month | the same expenditure rule as every other page; transfers, card bill payments and income never count |
+| Remaining | budget − actual | negative = overspent |
+| Variance | actual − budget | positive = over budget |
+| Variance % | (actual − budget) ÷ budget × 100 | undefined (shown as —) when the budget is ₹0 |
+| Utilisation % | actual ÷ budget × 100 | undefined when the budget is ₹0; rounded to 1 dp, halves away from zero (same as SQLite `ROUND`) |
+| Status | `over` (actual > budget) · `at_limit` (equal) · `near` (≥ 80% used) · `within` · `no_budget` · `no_data` | a ₹0 budget is `over` as soon as anything is spent |
+
+Thresholds live in `src/config.py` (`BudgetSettings`): `SPENDLY_BUDGET_NEAR_PCT` (default 80),
+`SPENDLY_BUDGET_PACE_MIN_DAYS` (7), the pace tolerance band (±10%), and the repeated-overspend window
+(over budget in at least 2 of the last 3 complete months).
+
+### Storage
+Budgets are stored as integer paise in the `budgets` table of the same SQLite database as the transactions,
+so demo data, your data and (on public hosting) each browser session keep separate budgets automatically.
+The month is stored as its first day (`2026-09-01`); a `CHECK` enforces that format and a non-negative amount,
+and a unique expression index prevents two budgets for the same category and month. The demo dataset seeds
+synthetic budgets for Jul–Sep 2026; resetting the demo restores them.
+
+### Refund treatment
+Refunds are **not** netted against category spending. A refund is categorised as *Refunds*, not as the
+category of the original purchase, and statements don't reliably link the two. So a category's actual is
+what you paid out; refunds received in the month are shown separately next to the overall figure (with net
+spending), never silently subtracted.
+
+### Edge cases
+- **Zero budget**: no division; utilisation and variance % are empty, the rupee variance is still shown.
+- **Spending equal to budget**: `at_limit`, not `over`.
+- **Month with no statement**: `no_data` and "spending unknown", never ₹0. You can still plan budgets for it.
+- **Partial month** (statement stops mid-month): figures are labelled "so far". The spending **pace** is
+  shown only when the data starts on day 1 and covers at least 7 days. It's a linear projection, labelled as
+  an estimate and kept apart from observed results. A partial month is never treated as a full one, and it's
+  excluded from month-on-month and repeated-overspending comparisons.
+- **Spending in categories without a budget** is listed separately and counted in "outside category budgets".
+- **Category budgets adding up to more than the overall budget** are flagged, not blocked.
+- Income, Transfers and Refunds can't have a spending budget. Amounts above ₹10 crore are rejected as typos.
+
+### API
+| Method & path | Purpose |
+|---|---|
+| `GET /api/budgets/months` | months that have statement data or budgets, plus the default month |
+| `GET /api/budgets?month=YYYY-MM` | category rows, overall summary, coverage, pace, insights and 6-month history |
+| `POST /api/budgets` `{month, category \| null, amount}` | create (409 if it already exists, 400 if invalid) |
+| `PATCH /api/budgets/{id}` `{amount}` | change the amount |
+| `DELETE /api/budgets/{id}` | delete (the UI asks for confirmation first) |
+| `POST /api/budgets/copy` `{from_month, to_month, overwrite}` | copy all budgets; existing ones are kept unless `overwrite` |
+| `GET /api/budgets/drivers?month&category` | merchants behind a category and what changed vs the previous month |
+
+All business logic (status, variance, pace, insights) is in Python and SQL; the web app only displays it.
+
+### Insights (wording rules)
+Each insight is marked **observed** or **estimate**. Observed: overall budget vs actual, categories over budget,
+largest overspend (in rupees), categories near the limit, spending without a budget, the biggest utilisation
+change vs the previous full month, and categories repeatedly over budget. The wording describes what happened
+and never calls spending bad or unhealthy. A repeated overspend is described as the budget possibly not
+matching usual spending, not as a problem with the spending.
+
+### Example use cases (synthetic demo data)
+- **September 2026:** ₹40,088 spent of a ₹50,000 overall budget (80.2%, near limit). Groceries went ₹485 over
+  (107.5%); "Why?" shows Blinkit, Swiggy Instamart and BigBasket. Rent is exactly at its limit.
+- **August 2026:** a ₹54,999 laptop puts Shopping and the overall budget far over. One click opens those
+  transactions.
+- **October 2026:** no statement yet. Copy September's budgets to plan ahead; every row shows "spending unknown".
