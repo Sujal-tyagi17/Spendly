@@ -128,7 +128,7 @@ export default function TransactionsPage() {
 
       {data ? (
         <p className="text-[0.8rem] text-muted" aria-live="polite">
-          <span className="tabular text-fg">{data.total.toLocaleString("en-IN")}</span> transactions · money out{" "}
+          <span className="tabular text-fg">{data.total.toLocaleString("en-IN")}</span> transaction{data.total === 1 ? "" : "s"} · money out{" "}
           <span className="tabular text-fg">{inr(data.summary.debits_paise)}</span> · money in{" "}
           <span className="tabular text-pos">{inr(data.summary.credits_paise)}</span>
           {data.summary.needs_review ? <> · <span className="text-warn">{data.summary.needs_review} need review</span></> : null}

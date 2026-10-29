@@ -121,7 +121,7 @@ export default function QualityPage() {
       {/* ---------- dimensions */}
       <section aria-labelledby="dims-title" className="space-y-4">
         <SectionHeader id="dims-title" title="Quality dimensions"
-          subtitle={`${sc.scope.statements} import${sc.scope.statements === 1 ? "" : "s"} · ${sc.scope.transactions.toLocaleString("en-IN")} saved transactions. Hover ⓘ for the exact formula.`} />
+          subtitle={`${sc.scope.statements} import${sc.scope.statements === 1 ? "" : "s"} · ${sc.scope.transactions.toLocaleString("en-IN")} saved transaction${sc.scope.transactions === 1 ? "" : "s"}. Hover ⓘ for the exact formula.`} />
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {sc.dimensions.map((d) => <li key={d.key}><DimensionCard d={d} /></li>)}
         </ul>
@@ -145,11 +145,13 @@ export default function QualityPage() {
                 <Card as="article" className="flex h-full flex-col p-4 sm:p-5">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <h3 className="text-[0.95rem] font-semibold text-fg">{i.label}</h3>
-                    <SeverityPill s={i.severity} />
+                    {i.current_count === 0 ? (
+                      <Pill tone="pos"><CheckCircle2 className="h-3 w-3" aria-hidden="true" />Resolved</Pill>
+                    ) : <SeverityPill s={i.severity} />}
                   </div>
                   <p className="tabular mt-2 text-[0.82rem] text-muted">
                     {i.count.toLocaleString("en-IN")} {i.unit === "statement" ? `import${i.count === 1 ? "" : "s"}` : `row${i.count === 1 ? "" : "s"}`} at import
-                    {i.current_count !== null ? <> · <span className="text-fg/85">{i.current_count.toLocaleString("en-IN")} still flagged</span></> : null}
+                    {i.current_count !== null ? <> · <span className={i.current_count === 0 ? "text-pos" : "text-fg/85"}>{i.current_count.toLocaleString("en-IN")} still flagged</span></> : null}
                     <span className="text-faint"> · {i.dimension}</span>
                   </p>
                   <p className="mt-2 flex-1 text-[0.84rem] leading-relaxed text-fg/80">{i.implication}</p>

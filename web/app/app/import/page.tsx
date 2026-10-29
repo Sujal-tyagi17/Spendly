@@ -155,7 +155,7 @@ function ImportFlow() {
       setResult(res);
       setPreview(null);
       refresh();
-      notify(`Imported ${res.imported} transactions.`);
+      notify(`Imported ${res.imported} transaction${res.imported === 1 ? "" : "s"}.`);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "The import failed and nothing was saved.");
     } finally {
@@ -312,7 +312,7 @@ function ImportFlow() {
             <div className="flex flex-col-reverse gap-2 sm:flex-row">
               <Button variant="ghost" onClick={reset}>Discard</Button>
               <Button variant="primary" onClick={commit} loading={committing} disabled={preview.already_imported || preview.counts.to_import + (includeDups ? preview.counts.exact_duplicates : 0) === 0}>
-                Import {preview.counts.to_import + (includeDups ? preview.counts.exact_duplicates : 0)} transactions
+                {(() => { const n = preview.counts.to_import + (includeDups ? preview.counts.exact_duplicates : 0); return `Import ${n} transaction${n === 1 ? "" : "s"}`; })()}
               </Button>
             </div>
           </div>
