@@ -271,10 +271,11 @@ A month that's half-covered by statements, or cut by the date filter, would drag
 months rather than scaling them up, which would be an assumption, and I show how many months were used.
 
 **45. How is one visitor's data kept away from another's?**
-There are no accounts. Locally there's one database per data mode. On a public deployment, each browser session
-sends a random id that selects private in-memory databases. IDs inside a request only reach that session's database.
-A test deletes "someone else's" transaction id from another session and checks nothing changes. The limits are
-written down: no login, no rate limiting, and a single worker process.
+There are no accounts. Locally, the API only answers requests from the same computer. On a public deployment, the
+server issues each browser a random 256-bit session token, and the token selects private in-memory databases. Tokens
+the server didn't issue, expired ones and ended ones get a 401. IDs inside a request only reach that session's
+database. Tests run a two-session matrix covering reads, edits, bulk edits, deletes, exports, reports, analytics and
+pending imports. The limits are written down: no login, process-local state (one worker), and no encryption at rest.
 
 **46. What did the security review change?**
 - `no-store` caching and baseline security headers on the API and the web app;
@@ -283,6 +284,29 @@ written down: no login, no rate limiting, and a single worker process.
 - a test that "delete all my data" really empties every table and leaves the demo alone.
 
 Nothing has been penetration-tested, and the README says so.
+
+## Security hardening
+
+**47. A session token isn't authentication. Why is that acceptable?**
+Public mode is a portfolio demo with synthetic data, and personal uploads there live only in memory for one tab's
+session. A token proves "you are the browser that started this session", not who you are. For real users' statements
+you'd need accounts: an identity provider, HttpOnly cookies, CSRF protection and an owner ID on every row. I wrote
+down what that requires instead of improvising half an auth system.
+
+**48. What was the most surprising finding?**
+Starlette writes uploaded files over 1 MB to a temporary file on disk. That quietly broke the "statements are never
+written to disk" promise, and a 30 MB upload was fully received before the size check ran. Now `Content-Length` is
+checked before the body is read, and the spool threshold sits above the upload limit. A test spies on the temp-file
+class to prove nothing rolls over to disk.
+
+**49. How do you keep filter values out of logs?**
+A logging filter on `uvicorn.access` replaces the query string with `?[redacted]`. A test starts a real uvicorn
+process, sends a distinctive merchant name and a forged token, and then searches the captured output for both.
+
+**50. Why an in-memory rate limiter?**
+Public mode already needs a single process (sessions live in memory), so an in-process sliding window is correct
+there and needs no new infrastructure. The docs say plainly that it isn't distributed: with N workers you'd get N×
+the limit, and you'd move to Redis only if you scale out.
 
 ## Numbers worth knowing (demo data)
 - 285 synthetic rows, April–September 2026. One exact duplicate is skipped, so 284 are imported.

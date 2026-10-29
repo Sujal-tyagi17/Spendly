@@ -72,3 +72,11 @@ def demo_conn():
     pipeline.load_demo_dataset(conn)
     yield conn
     conn.close()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_rate_limiter():
+    """The API's rate limiter is process-wide; start every test with empty counters."""
+    from api import main
+    main.limiter.reset()
+    yield

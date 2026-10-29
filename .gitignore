@@ -29,3 +29,4 @@ uploads/
 data/parser_eval/
 .coverage
 e2e/results.json
+e2e/results-public.json

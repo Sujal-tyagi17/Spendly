@@ -25,9 +25,11 @@ from fastapi import Body, Depends, FastAPI, File, Form, Header, HTTPException, Q
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
+from starlette.formparsers import MultiPartParser
 
 from api.serialize import clean, records, transaction_rows
-from api.state import MODES, ConnectionManager, PreviewStore, SessionError, is_public
+from api import security
+from api.state import MODES, SESSION_TTL_SECONDS, CapacityError, ConnectionManager, PreviewStore, SessionError, is_public
 from src import (
     ai, analytics, anomaly_detector, budgets, config, database, insights, kpis, metrics, pipeline, quality, report,
     subscription_detector,
@@ -52,20 +54,80 @@ app.add_middleware(
     allow_headers=["Content-Type", "X-Spendly-Mode", "X-Spendly-Session"],
 )
 
+connections = ConnectionManager(public=is_public())
+previews = PreviewStore()
+limiter = security.RateLimiter()
+security.install_access_log_filter()
+
+# Keep uploads in memory: Starlette spools multipart files larger than 1 MB to a temporary
+# file on disk, which would break the "statements are never written to disk" promise.
+MultiPartParser.spool_max_size = config.UPLOAD.max_file_size_bytes + 1024 * 1024
+JSON_BODY_LIMIT = 64 * 1024
+_DOC_PATHS = {"/api/docs", "/api/openapi.json"}
+
+
+def _too_large(path: str) -> int:
+    """Maximum request body for this path, in bytes."""
+    if path == "/api/import/preview":
+        return config.UPLOAD.max_file_size_bytes + 64 * 1024  # file + multipart framing + password field
+    return JSON_BODY_LIMIT
+
+
+@app.middleware("http")
+async def _guards(request: Request, call_next):
+    """Cheap checks that run before any body is read or any database is touched."""
+    path = request.url.path
+    # 1) Local mode has no sessions: everyone who can reach the API shares one "My data".
+    #    So only this machine may use it, unless the operator explicitly opts in.
+    #    A request relayed by the Next.js proxy carries the browser's Host in X-Forwarded-Host.
+    #    This is a safety net against misconfiguration, not an access-control boundary.
+    forwarded_host = request.headers.get("x-forwarded-host")
+    if (not is_public() and not security.env_flag("SPENDLY_ALLOW_REMOTE")
+            and ((request.client.host if request.client else "") not in security.LOOPBACK
+                 or (forwarded_host is not None and not security.is_loopback_host(forwarded_host)))):
+        return JSONResponse(status_code=403, content={"detail": (
+            "This Spendly API runs in single-user local mode and only accepts requests from this computer. "
+            "For a shared host set SPENDLY_PUBLIC_DEPLOYMENT=true.")})
+    # 2) Request size, before the body is received.
+    if request.method in {"POST", "PATCH", "PUT", "DELETE"}:
+        length = request.headers.get("content-length")
+        if length is None and request.headers.get("transfer-encoding"):
+            return JSONResponse(status_code=411, content={"detail": "Content-Length is required."})
+        if length is not None:
+            if not length.isdigit():
+                return JSONResponse(status_code=400, content={"detail": "Invalid Content-Length."})
+            if int(length) > _too_large(path):
+                limit_mb = config.UPLOAD.max_file_size_mb
+                return JSONResponse(status_code=413, content={"detail": (
+                    f"The file is larger than {limit_mb} MB." if path == "/api/import/preview"
+                    else "The request is too large.")})
+    # 3) Rate limits (process-local; on by default in public mode).
+    if path.startswith("/api/") and (is_public() or security.env_flag("SPENDLY_RATE_LIMIT")):
+        bucket = security.bucket_for(request.method, path)
+        session = request.headers.get("x-spendly-session")
+        key = session if (bucket != "session" and session) else security.client_ip(request)
+        wait = limiter.check(bucket, key)
+        if wait is None and bucket == "session":
+            wait = limiter.check("session_global", "*")
+        if wait is not None:
+            return JSONResponse(status_code=429, headers={"Retry-After": str(max(1, int(wait + 0.999)))},
+                                content={"detail": "Too many requests. Please wait a moment and try again."})
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def _security_headers(request: Request, call_next):
     response = await call_next(request)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     response.headers.setdefault("X-Frame-Options", "DENY")
+    if request.url.path not in _DOC_PATHS:
+        # The API only returns data, never pages: nothing may load or run from its responses.
+        response.headers.setdefault("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
     # Financial data must not be stored by browsers or shared caches.
-    if request.url.path.startswith("/api/") and request.url.path not in {"/api/docs", "/api/openapi.json"}:
+    if request.url.path.startswith("/api/") and request.url.path not in _DOC_PATHS:
         response.headers["Cache-Control"] = "no-store"
     return response
-
-
-connections = ConnectionManager(public=is_public())
-previews = PreviewStore()
 
 
 # ---------------------------------------------------------------- errors
@@ -75,9 +137,14 @@ async def _filter_error(_: Request, exc: FilterError):
     return JSONResponse(status_code=400, content={"detail": str(exc)})
 
 
+@app.exception_handler(CapacityError)
+async def _capacity_error(_: Request, exc: CapacityError):
+    return JSONResponse(status_code=503, headers={"Retry-After": "120"}, content={"detail": str(exc)})
+
+
 @app.exception_handler(SessionError)
 async def _session_error(_: Request, exc: SessionError):
-    return JSONResponse(status_code=400, content={"detail": str(exc)})
+    return JSONResponse(status_code=401, content={"detail": str(exc), "code": "session_required"})
 
 
 @app.exception_handler(Exception)
@@ -197,6 +264,25 @@ def _recurring(conn, filters: Filters):
 @app.get("/api/health")
 def health():
     return {"ok": True, "public": is_public()}
+
+
+@app.post("/api/session")
+def start_session():
+    """Public mode: issue a new session token (keep it secret; it is the only key to that
+    session's data). Local mode: no session is needed, so none is issued."""
+    token = connections.issue()
+    return {"session": token, "public": connections.public, "ttl_seconds": SESSION_TTL_SECONDS if token else None}
+
+
+@app.delete("/api/session")
+def end_session(x_spendly_session: Annotated[str | None, Header()] = None):
+    """Public mode: end the session now. Its demo and personal data are erased immediately."""
+    if not connections.public:
+        raise HTTPException(409, "Sessions are only used on public deployments.")
+    if not connections.revoke(x_spendly_session):
+        raise SessionError("This session has expired or was ended. Start a new one.")
+    previews.discard_owner(x_spendly_session)
+    return {"ok": True}
 
 
 @app.get("/api/meta")
@@ -795,7 +881,8 @@ def import_commit(token: str, c: CtxDep, body: CommitBody = Body(default_factory
 
 @app.delete("/api/import/{token}")
 def import_discard(token: str, c: CtxDep):
-    previews.pop(token, c.owner, c.mode)
+    if previews.pop(token, c.owner, c.mode) is None:  # unknown, expired, or someone else's preview
+        raise HTTPException(404, "This preview has expired. Please upload the statement again.")
     return {"ok": True}
 
 

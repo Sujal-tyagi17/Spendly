@@ -379,14 +379,15 @@ def test_api_public_sessions_isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     monkeypatch.setattr(main, "connections", ConnectionManager(public=True))
     with TestClient(main.app) as c:
-        a = {**USER, "X-Spendly-Session": "a" * 24}
-        b = {**USER, "X-Spendly-Session": "b" * 24}
-        assert c.get("/api/budgets", headers=USER).status_code == 400  # session required
+        sa, sb = c.post("/api/session").json()["session"], c.post("/api/session").json()["session"]
+        a = {**USER, "X-Spendly-Session": sa}
+        b = {**USER, "X-Spendly-Session": sb}
+        assert c.get("/api/budgets", headers=USER).status_code == 401  # session required
         c.post("/api/budgets", json={"month": "2026-09", "category": "Shopping", "amount": "100"}, headers=a)
         assert len([r for r in c.get("/api/budgets?month=2026-09", headers=a).json()["rows"] if r["budget_id"]]) == 1
         assert c.get("/api/budgets?month=2026-09", headers=b).json()["rows"] == []
-        da = {**DEMO, "X-Spendly-Session": "a" * 24}
-        db = {**DEMO, "X-Spendly-Session": "b" * 24}
+        da = {**DEMO, "X-Spendly-Session": sa}
+        db = {**DEMO, "X-Spendly-Session": sb}
         bid = c.get("/api/budgets?month=2026-09", headers=da).json()["overall"]["overall_budget_id"]
         c.patch(f"/api/budgets/{bid}", json={"amount": "1"}, headers=da)
         assert c.get("/api/budgets?month=2026-09", headers=db).json()["overall"]["overall_budget_paise"] == 5000000

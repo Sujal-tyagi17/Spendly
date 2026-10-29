@@ -220,9 +220,10 @@ def test_public_mode_isolates_sessions(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "connections", ConnectionManager(public=True))
     monkeypatch.setattr(main, "previews", PreviewStore())
     with TestClient(main.app) as c:
-        a = {**USER, "X-Spendly-Session": "a" * 24}
-        b = {**USER, "X-Spendly-Session": "b" * 24}
-        assert c.get("/api/meta", headers=USER).status_code == 400  # session required
+        sa, sb = c.post("/api/session").json()["session"], c.post("/api/session").json()["session"]
+        a = {**USER, "X-Spendly-Session": sa}
+        b = {**USER, "X-Spendly-Session": sb}
+        assert c.get("/api/meta", headers=USER).status_code == 401  # session required
         token = c.post("/api/import/preview", headers=a,
                        files={"file": ("s.pdf", _bank_pdf(), "application/pdf")}).json()["token"]
         assert c.post(f"/api/import/{token}/commit", json={}, headers=b).status_code == 404  # not B's preview
@@ -230,8 +231,8 @@ def test_public_mode_isolates_sessions(tmp_path, monkeypatch):
         assert c.get("/api/meta", headers=a).json()["counts"]["transactions"] == 5
         assert c.get("/api/meta", headers=b).json()["counts"]["transactions"] == 0
         # Demo edits by one visitor don't leak to another.
-        da = {**DEMO, "X-Spendly-Session": "a" * 24}
-        db = {**DEMO, "X-Spendly-Session": "b" * 24}
+        da = {**DEMO, "X-Spendly-Session": sa}
+        db = {**DEMO, "X-Spendly-Session": sb}
         c.post("/api/recurring/decision", json={"merchant": "Netflix", "decision": "rejected"}, headers=da)
         rec_b = c.get("/api/recurring", headers=db).json()
         assert next(x for x in rec_b["candidates"] if x["merchant"] == "Netflix")["status"] == "high_confidence"

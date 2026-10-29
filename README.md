@@ -613,6 +613,9 @@ The classic Streamlit app still works: `streamlit run app.py`.
 | `SPENDLY_ENABLE_AI`, `GEMINI_API_KEY`, `GEMINI_MODEL` | API / Streamlit | optional AI (off by default; keys stay server-side) | off |
 | `SPENDLY_MAX_UPLOAD_MB`, `SPENDLY_MAX_PDF_PAGES` | API / Streamlit | upload limits | `10`, `60` |
 | `SPENDLY_API_DOCS` | API | show `/api/docs` on a public deployment | off when public, on locally |
+| `SPENDLY_ALLOW_REMOTE` | API | let local (single-user) mode accept requests from other machines. Don't, unless you understand the risk | `false` |
+| `SPENDLY_RATE_LIMIT` | API | rate limits in local mode too (always on in public mode) | `false` |
+| `SPENDLY_TRUST_PROXY` | API | use the first `X-Forwarded-For` address for per-IP limits (only behind a proxy you control) | `false` |
 | `SPENDLY_ANOMALY_METHOD` | API / Streamlit | `robust_z_prior`, `iqr_prior`, `iqr_full` or `rule` | `robust_z_prior` |
 | `SPENDLY_BUDGET_NEAR_PCT`, `SPENDLY_BUDGET_PACE_MIN_DAYS` | API | budget "near limit" threshold and pace minimum | `80`, `7` |
 
@@ -624,9 +627,10 @@ See [Testing and verification](#testing-and-verification).
 
 1. **API** on any Python host that runs a long-lived process (for example Render or Railway):
    - build: `pip install -r requirements-api.txt`
-   - start: `uvicorn api.main:app --host 0.0.0.0 --port $PORT`
-   - env: `SPENDLY_PUBLIC_DEPLOYMENT=true`
-   - Run a **single worker**: the per-session databases live in that process's memory.
+   - start: `uvicorn api.main:app --host 0.0.0.0 --port $PORT --workers 1 --forwarded-allow-ips <your proxy's IP>`
+   - env: `SPENDLY_PUBLIC_DEPLOYMENT=true`, `SPENDLY_CORS_ORIGINS=https://your-site`
+   - Run **exactly one worker and one instance**: sessions, pending imports and rate-limit counters live in that
+     process's memory (see [docs/SECURITY.md](docs/SECURITY.md)).
 2. **Web** on Vercel:
    - Root Directory: `web`
    - env: `SPENDLY_API_URL=https://your-api-host`, `NEXT_PUBLIC_SITE_URL=https://your-site`
@@ -876,42 +880,47 @@ There is a single demo system (`pipeline.load_demo_dataset`), shared by the Stre
 
 ## Security review and data isolation
 
-This is a review of the code and configuration. Nothing has been penetration-tested, and Spendly does **not**
-claim production-grade security.
+Full audit, architecture map, findings and hosting checklist: **[docs/SECURITY.md](docs/SECURITY.md)**. This is a
+code review plus automated tests, not a penetration test, and Spendly makes **no** claim of production-grade security.
 
-| Area | Current state |
+**Access model.**
+- **Local mode (default)** is for one person on their own computer. The API refuses requests that don't come from
+  this machine, unless `SPENDLY_ALLOW_REMOTE=true`.
+- **Public mode** (`SPENDLY_PUBLIC_DEPLOYMENT=true`) is a **portfolio demo**.
+  - The server issues each browser a random 256-bit session token.
+  - Each session gets private in-memory databases that expire after 2 hours idle, or immediately on
+    `DELETE /api/session`.
+  - Rate limits apply.
+- **There are no user accounts.** A session token is a bearer secret, not an identity, so public mode is **not**
+  suitable for real personal statements. That would need real authentication (see docs/SECURITY.md, "Option B").
+
+| Control | Status |
 |---|---|
-| Identity model | **No user accounts.** Locally: one machine, one *My data* database. Public mode: a random UUID (122 random bits) per browser tab session (`X-Spendly-Session`, validated `[A-Za-z0-9_-]{16,64}`) selects private in-memory databases. Whoever holds the id holds the data; there is no login. |
-| Isolation | Every query runs on the connection chosen from (mode, session). Transaction ids are only meaningful inside that database, so changing an id in a request can't reach another session (tested). Import previews are bound to their owner and mode. |
-| Uploads | `.pdf` extension + `%PDF` signature + size limit (read stops at limit + 1 byte) + page limit; password field ≤ 128 chars; PDFs parsed in memory, never written to disk (tested). |
-| Request validation | categories, types and statuses whitelisted; ≤ 50 merchants of ≤ 120 chars; search ≤ 100 chars; start ≤ end; page size ≤ 250; Pydantic bodies; month formats validated. |
-| Errors | Unhandled errors return a generic message; only the exception *type* is logged. Validation errors return a useful message without stack traces. |
-| Logs | Counts only. A redacting log filter masks identifiers as a second line of defence. pdfminer debug output is silenced (tested). |
-| Headers | API: `Cache-Control: no-store`, `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`. Web: the same plus `Permissions-Policy`, and no `X-Powered-By`. |
-| CORS | Only `SPENDLY_CORS_ORIGINS` (default `http://localhost:3000`); no credentials; limited methods/headers. The browser normally uses the same-origin rewrite instead. |
-| Secrets | `GEMINI_API_KEY` is read only by the API. The only `NEXT_PUBLIC_*` variables are public URLs. |
-| Deletion | `DELETE /api/data` (user mode, requires `"DELETE"`) empties every table, then `VACUUM`s. A test checks all seven tables are empty and the demo is untouched. |
-| API docs | `/api/docs` is off on public deployments unless `SPENDLY_API_DOCS=true`. |
-| Dependencies | Bounded version ranges. `npm audit --omit=dev` reported 0 vulnerabilities on 2026-10-29. Python packages weren't audited with a vulnerability scanner. |
+| Cross-session isolation (read, edit, bulk edit, delete, export, report, analytics, pending imports) | tested (`tests/test_security.py`, browser journey P) |
+| Server-issued sessions, expiry, revocation, forged tokens rejected (401) | tested |
+| Rate limits (per session; per IP plus a global cap for new sessions), `429` + `Retry-After` | tested, **in-process only** |
+| Upload size checked before the body is read (413); uploads kept in memory (no temp file) | tested |
+| JSON bodies ≤ 64 KB, page limit, magic bytes, encrypted and corrupt PDFs | tested |
+| Access logs: query strings replaced by `?[redacted]`; no session tokens or statement text in logs | tested against a real uvicorn process |
+| Content-Security-Policy (web: same-origin only; API: `default-src 'none'`) plus the other headers | tested; all 70 browser checks pass under the CSP |
+| CORS: only `SPENDLY_CORS_ORIGINS`, no credentials | tested |
+| Database files `0600` (owner only) on POSIX | tested; **not encrypted** |
+| Secrets: Gemini key is server-side only and sent in a header; `.env*` git-ignored | reviewed |
 
-**Known limitations:** no authentication or rate limiting; the local SQLite file is unencrypted; a session id
-in `sessionStorage` is readable by scripts on the same origin; there is no Content-Security-Policy yet (it depends
-on the host); uvicorn's access log records request URLs, which can include search text and merchant filter values,
-so turn access logs off (`--no-access-log`) on a shared host. Public mode keeps data in one process's memory, so it
-needs a single worker.
-
-**Before you deploy (manual checks):** set `SPENDLY_PUBLIC_DEPLOYMENT=true`; set `SPENDLY_CORS_ORIGINS` to your web
-origin; run uvicorn with one worker and `--no-access-log`; keep `/api/docs` off; confirm HTTPS on both hosts; add a CSP
-and rate limiting at the host or proxy; check the host's upload-size limit matches `SPENDLY_MAX_UPLOAD_MB`; open the
-site in two browsers and confirm they don't see each other's *My data*; and don't upload real statements to an
-instance you don't control.
+**Still open:**
+- no authentication;
+- no encryption at rest;
+- rate limits and sessions are process-local, so there's one worker and one instance, and a restart clears public sessions;
+- `script-src 'unsafe-inline'` is required by the statically prerendered Next.js pages;
+- IP-based limits depend on correct proxy configuration (`--forwarded-allow-ips`);
+- HSTS must be set by the HTTPS host.
 
 ## Testing and verification
 
 ```bash
 # Python core, API and integration tests (from the repo root, in your virtualenv)
 pip install -r requirements-dev.txt
-pytest                                        # 395 tests at the time of writing
+pytest                                        # 429 tests at the time of writing
 pytest --cov=src --cov=api                    # with a coverage report (89% of src/ + api/)
 
 # Reproduce the evaluations (deterministic)
@@ -935,6 +944,7 @@ npm run build
 | `test_report` | executive KPIs, change explanations, PDF report vs dashboard, demo reset, deletion, security headers, isolation |
 | `test_api` | HTTP layer, imports, edits, public-mode sessions |
 | `test_qa_known_answer` | a hand-calculated account (salary, rent, refund, own transfer, card bill, friend's transfer, possible duplicate, empty month, partial month) plus invariants: row order, re-imports, invalid rows |
+| `test_security` | sessions (issue, forge, expire, revoke, capacity), cross-session matrix, rate limits, body/upload limits, local-mode exposure, log redaction with a real uvicorn process, headers, CORS, file permissions, single-process model |
 | `test_qa_api_integrity` | parser edge cases, money and date boundaries, merchant normalisation, the full import workflow, rollback, atomic bulk edits, concurrency, isolation, log privacy, and regression tests for QA-1 … QA-5 |
 
 **Browser end-to-end suite** (Playwright, synthetic data, a throwaway data folder):
@@ -945,6 +955,8 @@ cd web && npm run build && npx next start -p 3000                               
 SPENDLY_DATA_DIR=/tmp/spendly-st streamlit run app.py --server.port 8501             # terminal 3 (optional)
 python -m e2e.run_e2e --base http://localhost:3000 \
     --streamlit http://localhost:8501 --streamlit-db /tmp/spendly-st/spendly_user.db # 70 checks, journeys A–G
+# public-mode session journey (restart the API with SPENDLY_PUBLIC_DEPLOYMENT=true first):
+python -m e2e.run_e2e --base http://localhost:3000 --public                         # 7 checks
 ```
 
 It covers:

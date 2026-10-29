@@ -13,6 +13,7 @@ README "Privacy" section for where it lives and how to delete it.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -137,6 +138,19 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
+def restrict_permissions(path: str | Path) -> None:
+    """Make a database file readable and writable by its owner only (0600) on POSIX systems.
+    SQLite gives its journal files the same permissions. This is access control, not encryption."""
+    if os.name != "posix" or str(path) == ":memory:":
+        return
+    for candidate in (Path(path), *(Path(f"{path}{s}") for s in ("-journal", "-wal", "-shm"))):
+        try:
+            if candidate.exists():
+                os.chmod(candidate, 0o600)
+        except OSError:  # e.g. a file owned by someone else: leave it, but never fail to open
+            log.warning("Could not restrict permissions on a database file")
+
+
 def connect(path: str | Path) -> sqlite3.Connection:
     try:
         # isolation_level=None -> we control transactions explicitly with BEGIN/COMMIT.
@@ -144,6 +158,7 @@ def connect(path: str | Path) -> sqlite3.Connection:
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
         init_db(conn)
+        restrict_permissions(path)
         return conn
     except sqlite3.Error as exc:
         log.error("Database initialisation failed: %s", type(exc).__name__)

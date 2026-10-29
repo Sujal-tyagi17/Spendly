@@ -41,7 +41,7 @@ def api(page: Page, path: str, mode: str = "demo", method: str = "GET", body: di
     return page.evaluate(
         """async ([path, mode, method, body]) => {
             const r = await fetch(path, {method, headers: {'X-Spendly-Mode': mode, 'Content-Type': 'application/json',
-              'X-Spendly-Session': sessionStorage.getItem('spendly.session') || 'e2e-session-000000000000'},
+              ...(sessionStorage.getItem('spendly.session') ? {'X-Spendly-Session': sessionStorage.getItem('spendly.session')} : {})},
               body: body ? JSON.stringify(body) : undefined});
             const text = await r.text();
             try { return {status: r.status, json: JSON.parse(text)}; } catch { return {status: r.status, text}; }
@@ -442,6 +442,45 @@ def journey_g(page: Page, st_base: str, fx: dict, st_db: Path | None = None):
         check(J, "Streamlit import stored rows", False, "pass --streamlit-db to verify (BLOCKED otherwise)")
 
 
+def journey_public(browser, base: str, fx: dict):
+    """Run against an API started with SPENDLY_PUBLIC_DEPLOYMENT=true."""
+    J = "P public sessions"
+    a_ctx, b_ctx = browser.new_context(), browser.new_context()
+    a, b = a_ctx.new_page(), b_ctx.new_page()
+    for p in (a, b):
+        p.goto(base + "/app?mode=demo")
+        p.wait_for_selector("text=Why spending changed", timeout=30000)
+    sa = a.evaluate("sessionStorage.getItem('spendly.session')")
+    sb = b.evaluate("sessionStorage.getItem('spendly.session')")
+    check(J, "each browser gets its own server-issued session", bool(sa) and bool(sb) and sa != sb and len(sa) >= 40)
+    set_mode(a, base, "user")
+    text = import_file(a, base, fx["good"])
+    a.get_by_role("button", name="Import 8 transactions").click()
+    a.wait_for_timeout(2500)
+    check(J, "A sees its import", api(a, "/api/meta", "user")["json"]["counts"]["transactions"] == 8)
+    check(J, "B sees none of A's data", api(b, "/api/meta", "user")["json"]["counts"]["transactions"] == 0)
+    tx = api(a, "/api/transactions?page_size=1", "user")["json"]["rows"][0]
+    check(J, "B can't delete A's transaction by id", api(b, f"/api/transactions/{tx['id']}", "user", "DELETE")["status"] == 404
+          and api(a, "/api/meta", "user")["json"]["counts"]["transactions"] == 8)
+    forged = b.evaluate("""async () => (await fetch('/api/meta', {headers: {'X-Spendly-Mode': 'user',
+        'X-Spendly-Session': 'A'.repeat(43)}})).status""")
+    check(J, "a made-up session token is rejected (401)", forged == 401)
+    api(a, "/api/session", "user", "DELETE")
+    a.reload()
+    a.wait_for_timeout(3000)
+    new = a.evaluate("sessionStorage.getItem('spendly.session')")
+    check(J, "after ending the session the app starts a fresh one, with A's data gone",
+          new and new != sa and api(a, "/api/meta", "user")["json"]["counts"]["transactions"] == 0)
+    statuses = a.evaluate("""async () => { const out = [];
+        for (let i = 0; i < 24; i++) { const r = await fetch('/api/report/monthly.pdf?month=2026-09',
+          {headers: {'X-Spendly-Mode': 'demo', 'X-Spendly-Session': sessionStorage.getItem('spendly.session')}});
+          out.push(r.status); } return out; }""")
+    check(J, "report generation is rate-limited (20 per minute, then 429)",
+          statuses[:20] == [200] * 20 and statuses[20:] == [429] * 4, str(statuses))
+    a_ctx.close()
+    b_ctx.close()
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default="http://localhost:3000")
@@ -449,6 +488,7 @@ def main() -> int:
     ap.add_argument("--api-log", default=None)
     ap.add_argument("--streamlit-db", default=None, help="the Streamlit instance's spendly_user.db (throwaway)")
     ap.add_argument("--out", default="e2e/results.json")
+    ap.add_argument("--public", action="store_true", help="the API runs with SPENDLY_PUBLIC_DEPLOYMENT=true: run only the session journey")
     args = ap.parse_args()
     fx = make_fixtures()
     errors: list[str] = []
@@ -458,6 +498,15 @@ def main() -> int:
         ctx = browser.new_context(viewport={"width": 1440, "height": 900}, accept_downloads=True)
         page = ctx.new_page()
         console_guard(page, errors)
+        if args.public:
+            try:
+                journey_public(browser, args.base, fx)
+            except Exception as exc:
+                check("P", "journey completed", False, f"{type(exc).__name__}: {str(exc)[:200]}")
+            browser.close()
+            failed = sum(r["status"] == "FAIL" for r in RESULTS)
+            print(f"\n{len(RESULTS) - failed} passed, {failed} failed")
+            return failed
         page.goto(args.base + "/app")
         page.wait_for_timeout(1500)
         api(page, "/api/data", "user", "DELETE", {"confirm": "DELETE"})   # start from an empty My data

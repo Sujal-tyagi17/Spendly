@@ -1,5 +1,8 @@
 # Spendly end-to-end QA report
 
+> Security items in this report were revisited in [SECURITY.md](SECURITY.md) (phase 1 hardening): rate limiting,
+> log redaction, CSP and session handling have since been implemented.
+
 Date: 29 Oct 2026 · Environment: Linux x86_64, Python 3.13.18, Node 22.23.4, Next.js 16.4.3, FastAPI 0.162,
 Streamlit 1.66.1, Chromium (Playwright 1.63) · Data: synthetic only (no real statements, no credentials).
 

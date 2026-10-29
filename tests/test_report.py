@@ -233,14 +233,14 @@ def test_public_mode_cannot_touch_another_sessions_rows(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DATA_DIR", tmp_path)
     monkeypatch.setattr(main, "connections", ConnectionManager(public=True))
     with TestClient(main.app) as c:
-        a = {**DEMO, "X-Spendly-Session": "a" * 32}
-        b = {**DEMO, "X-Spendly-Session": "b" * 32}
+        a = {**DEMO, "X-Spendly-Session": c.post("/api/session").json()["session"]}
+        b = {**DEMO, "X-Spendly-Session": c.post("/api/session").json()["session"]}
         txn = c.get("/api/transactions?page_size=1", headers=a).json()["rows"][0]
         # B uses A's transaction id: it only ever reaches B's own private database.
         c.delete(f"/api/transactions/{txn['id']}", headers=b)
         assert c.get("/api/meta", headers=a).json()["counts"]["transactions"] == 284
         assert c.get("/api/meta", headers=b).json()["counts"]["transactions"] == 283
-        assert c.get("/api/meta", headers={**DEMO, "X-Spendly-Session": "../../etc"}).status_code == 400
+        assert c.get("/api/meta", headers={**DEMO, "X-Spendly-Session": "../../etc"}).status_code == 401
     main.connections.close_all()
 
 

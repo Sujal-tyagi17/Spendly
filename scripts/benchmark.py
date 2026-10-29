@@ -57,8 +57,9 @@ def run(n: int) -> dict:
         for r in data)
     main.connections = ConnectionManager(public=True)
     main.previews = PreviewStore()
-    h = {"X-Spendly-Mode": "user", "X-Spendly-Session": "benchmark-session-0001"}
     c = TestClient(main.app)
+    main.limiter.reset()
+    h = {"X-Spendly-Mode": "user", "X-Spendly-Session": main.connections.issue()}
     with main.connections.connection("user", h["X-Spendly-Session"]) as conn:
         p, out["csv_preview_ms"] = timed(lambda: pipeline.prepare_csv_rows_import(csv_text, display_name="b", conn=conn))
         _, out["commit_ms"] = timed(lambda: pipeline.commit_import(conn, p))
