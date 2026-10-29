@@ -62,8 +62,8 @@ function TrendChart({ data }: { data: QualityResponse["scorecard"]["trend"] }) {
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
         <CartesianGrid stroke="#1e261e" vertical={false} />
-        <XAxis dataKey="name" tick={{ fill: "#5f675d", fontSize: 11 }} tickLine={false} axisLine={false} />
-        <YAxis allowDecimals={false} width={36} tick={{ fill: "#5f675d", fontSize: 11 }} tickLine={false} axisLine={false} />
+        <XAxis dataKey="name" tick={{ fill: "#828a80", fontSize: 11 }} tickLine={false} axisLine={false} />
+        <YAxis allowDecimals={false} width={36} tick={{ fill: "#828a80", fontSize: 11 }} tickLine={false} axisLine={false} />
         <Tooltip cursor={{ fill: "rgb(255 255 255 / 0.03)" }} contentStyle={{ background: "#151b14", border: "1px solid #2a342a", borderRadius: 12, fontSize: 12 }} />
         <Legend verticalAlign="top" align="right" height={28} formatter={(v) => <span className="text-[0.75rem] text-muted">{v}</span>} />
         {Object.keys(rows[0] ?? {}).filter((k) => k !== "name").map((k, i) => (
@@ -184,7 +184,7 @@ export default function QualityPage() {
         <section aria-labelledby="rows-title" className="space-y-4">
           <SectionHeader id="rows-title" title={`Rows that weren't imported (${data.issues.length})`}
             subtitle={data.issue_breakdown.map((b) => `${b.label}: ${b.count}`).join(" · ")} />
-          <Card className="overflow-x-auto">
+          <Card className="relative overflow-x-auto">
             <table className="w-full min-w-[620px] text-left text-[0.82rem]">
               <thead className="border-b border-line text-[0.72rem] text-muted"><tr>
                 {["Import", "Page", "Row", "Issue", "Details"].map((h) => <th key={h} scope="col" className="px-4 py-3 font-medium">{h}</th>)}
@@ -206,7 +206,7 @@ export default function QualityPage() {
       <section aria-labelledby="statements-title" className="space-y-4">
         <SectionHeader id="statements-title" title="Import reports"
           subtitle="Extracted = rejected + accepted; accepted = imported + exact duplicates skipped. Flags overlap, so they aren't added up." />
-        <Card className="overflow-x-auto">
+        <Card className="relative overflow-x-auto">
           <table className="w-full min-w-[900px] text-left text-[0.82rem]">
             <thead className="border-b border-line text-[0.72rem] text-muted"><tr>
               {["Import", "Period", "Extracted", "Rejected", "Accepted", "Duplicates skipped", "Possible dup.", "Balance check", "Reconciliation", "Imported on"].map((h, i) => (

@@ -12,7 +12,7 @@
   --color-lime-2: #a8e65c;       /* secondary accent */
   --color-fg: #f5f7f2;           /* primary text */
   --color-muted: #929a90;        /* secondary text */
-  --color-faint: #5f675d;        /* tertiary text, axis labels */
+  --color-faint: #828a80;        /* tertiary text, axis labels (≥ 4.5:1 on every surface) */
   --color-up: #e06c5f;           /* restrained red: spent more */
   --color-down: #7fc98a;         /* restrained green: spent less */
   --color-elevated: #151b14;     /* elevated card (app) */

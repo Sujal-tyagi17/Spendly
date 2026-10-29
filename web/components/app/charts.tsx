@@ -12,7 +12,7 @@ const C = {
   lime: "#c6ff5e",
   lime2: "#a8e65c",
   grid: "#1e261e",
-  axis: "#5f675d",
+  axis: "#828a80",
   prev: "#56604f",
   income: "#8fb8de",
 };
@@ -61,7 +61,7 @@ export function ChartContainer({ title, subtitle, table, children, height = 280,
       } />
       <div className="mt-4" style={{ minHeight: height }}>
         {asTable ? (
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
             <table className="w-full text-left text-[0.8rem]">
               <thead>
                 <tr className="border-b border-line text-muted">

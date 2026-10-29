@@ -27,3 +27,5 @@ uploads/
 
 # Consented real statements for local parser evaluation only
 data/parser_eval/
+.coverage
+e2e/results.json

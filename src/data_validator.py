@@ -145,8 +145,13 @@ def summarize(records: list[NormalizedRecord]) -> QualitySummary:
             f"Running balance did not add up on {balance.mismatches} of {balance.checked_pairs} "
             "consecutive rows — some rows may have been extracted incorrectly or be missing."
         )
+    with_balance = sum(1 for r in records if r.is_valid and r.balance_paise is not None)
     if not balance.available and records:
-        warnings.append("No balance column found, so extraction completeness could not be cross-checked.")
+        if with_balance == 0:
+            warnings.append("No balance column found, so extraction completeness could not be cross-checked.")
+        else:
+            warnings.append("The running-balance check needs at least two consecutive rows with a balance, "
+                            "so it couldn't run for this statement.")
 
     return QualitySummary(
         total_extracted=len(records),

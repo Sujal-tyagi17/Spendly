@@ -90,7 +90,7 @@ export function SpendLine({
       />
       {showAxis
         ? data.map((d, i) => (
-            <text key={d.label} x={pts[i][0]} y={height - 4} textAnchor="middle" fill="#5f675d"
+            <text key={d.label} x={pts[i][0]} y={height - 4} textAnchor="middle" fill="#828a80"
               fontSize="9" fontFamily="var(--font-geist-mono)">
               {d.label}
             </text>

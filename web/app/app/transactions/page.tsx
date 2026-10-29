@@ -149,7 +149,7 @@ export default function TransactionsPage() {
       {data && data.total > 0 ? (
         <div className={`transition-opacity duration-200 ${loading ? "opacity-60" : ""}`}>
           {/* desktop table */}
-          <div className="hidden overflow-x-auto rounded-2xl border border-line bg-card md:block">
+          <div className="relative hidden overflow-x-auto rounded-2xl border border-line bg-card md:block">
             <table className="w-full table-fixed text-left text-[0.84rem]">
               <caption className="sr-only">Transactions, sorted by {sort} {order === "asc" ? "ascending" : "descending"}</caption>
               <colgroup>

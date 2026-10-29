@@ -80,7 +80,7 @@ function Evaluation({ method }: { method: string }) {
         second half ({fmtDate(data.test_period[0])} – {fmtDate(data.test_period[1])}). These are <b className="font-medium text-fg/90">synthetic labels, not fraud labels</b>,
         so they show how the methods compare, not how often a real flag matters.
       </p>
-      <div className="mt-3 overflow-x-auto">
+      <div className="relative mt-3 overflow-x-auto">
         <table className="w-full min-w-[520px] text-left text-[0.8rem]">
           <thead className="border-b border-line text-[0.7rem] text-muted"><tr>
             {["Method", "Precision", "Recall", "F1", "F1 on 5 other seeds"].map((h, i) => <th key={h} scope="col" className={`py-2 pr-4 font-medium ${i ? "text-right" : ""}`}>{h}</th>)}

@@ -182,7 +182,9 @@ def _issue_list(report: dict) -> list[dict]:
     counts["balance_mismatch"] = report["balance_check"]["mismatches"]
     counts["uncategorised"] = report["flags"]["uncategorised"]
     counts["unknown_merchant"] = report["flags"]["unknown_merchant"]
-    counts["no_balance_column"] = (1 if report["rows_accepted"] and not report["balance_check"]["available"] else 0)
+    # Only when no accepted row has a balance at all (one row with a balance is not "no balance column").
+    counts["no_balance_column"] = (1 if report["rows_accepted"]
+                                   and report["flags"]["rows_without_balance"] == report["rows_accepted"] else 0)
     rec = report["reconciliation"]
     counts["reconciliation_difference"] = 1 if rec["available"] and rec["difference_paise"] != 0 else 0
     items = []

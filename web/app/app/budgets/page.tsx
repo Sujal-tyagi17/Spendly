@@ -33,7 +33,7 @@ const STATUS: Record<BudgetStatus, { label: string; tone: "neutral" | "lime" | "
   no_data: { label: "No data", tone: "neutral", icon: CircleDashed, bar: "bg-faint" },
 };
 
-const C = { grid: "#1e261e", axis: "#5f675d", budget: "#56604f", actual: "#a8e65c", over: "#ff7a6b", line: "#e8eee4" };
+const C = { grid: "#1e261e", axis: "#828a80", budget: "#56604f", actual: "#a8e65c", over: "#ff7a6b", line: "#e8eee4" };
 const axisProps = { tick: { fill: C.axis, fontSize: 11 }, tickLine: false, axisLine: false } as const;
 const inputCls = "mt-1.5 h-10 w-full rounded-xl border border-line bg-ink-2 px-3 text-[0.9rem] text-fg placeholder:text-faint";
 

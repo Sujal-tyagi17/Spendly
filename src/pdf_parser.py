@@ -55,6 +55,10 @@ class NoTextError(StatementError):
     pass
 
 
+class EmptyStatementError(StatementError):
+    """A supported layout with no transaction rows (e.g. an empty period)."""
+
+
 class UnsupportedFormatError(StatementError):
     pass
 
@@ -112,6 +116,8 @@ def open_pdf(data: bytes, password: str | None = None) -> PdfDocument:
     except Exception as exc:  # pdfminer raises several unrelated exception types
         name = type(exc).__name__
         details = f"{name} {exc!r}".lower()
+        if ("password" in details or "encrypt" in details) and password:
+            raise PasswordRequiredError("That password didn't open the PDF. Check it and try again.") from exc
         if "password" in details or "encrypt" in details:
             raise PasswordRequiredError(
                 "This PDF is password-protected. Enter the statement password "
@@ -385,12 +391,18 @@ def parse_statement(data: bytes, filename: str, password: str | None = None) -> 
     validate_upload(filename, data)
     document = open_pdf(data, password)
     try:
+        recognised = None
         for parser in PARSERS:
             if parser.can_parse(document):
                 result = parser.parse(document)
                 if result.rows:
                     log.info("Parsed statement with %s: %d rows", parser.name, len(result.rows))
                     return result
+                recognised = recognised or parser
+        if recognised is not None:
+            raise EmptyStatementError(
+                f"The statement layout was recognised ({recognised.label}), but it contains no transaction rows. "
+                "Check that you exported the right period.")
         raise UnsupportedFormatError(
             "This statement layout is not supported yet. Supported formats: "
             + "; ".join(supported_formats())

@@ -911,11 +911,13 @@ instance you don't control.
 ```bash
 # Python core, API and integration tests (from the repo root, in your virtualenv)
 pip install -r requirements-dev.txt
-pytest                                        # 315 tests at the time of writing
+pytest                                        # 395 tests at the time of writing
+pytest --cov=src --cov=api                    # with a coverage report (89% of src/ + api/)
 
 # Reproduce the evaluations (deterministic)
 python -m scripts.evaluate_anomalies          # unusual-payment detector, labelled synthetic data
 python -m scripts.evaluate_parsers            # parser accuracy on synthetic PDF fixtures
+python -m scripts.benchmark                   # timings at 100 / 1,000 / 10,000 transactions
 
 # Web app
 cd web
@@ -932,9 +934,25 @@ npm run build
 | `test_quality`, `test_anomalies`, `test_budgets` | data-quality dimensions, detector evaluation, budgets |
 | `test_report` | executive KPIs, change explanations, PDF report vs dashboard, demo reset, deletion, security headers, isolation |
 | `test_api` | HTTP layer, imports, edits, public-mode sessions |
+| `test_qa_known_answer` | a hand-calculated account (salary, rent, refund, own transfer, card bill, friend's transfer, possible duplicate, empty month, partial month) plus invariants: row order, re-imports, invalid rows |
+| `test_qa_api_integrity` | parser edge cases, money and date boundaries, merchant normalisation, the full import workflow, rollback, atomic bulk edits, concurrency, isolation, log privacy, and regression tests for QA-1 … QA-5 |
 
-Browser journeys (demo → every page → filters → drill-down → PDF report → data quality → reset → empty state, at
-1440 px and 390 px) were run with Playwright during development; they aren't part of `pytest`.
+**Browser end-to-end suite** (Playwright, synthetic data, a throwaway data folder):
+
+```bash
+SPENDLY_DATA_DIR=/tmp/spendly-e2e uvicorn api.main:app --port 8000 --no-access-log   # terminal 1 (or log to api.log)
+cd web && npm run build && npx next start -p 3000                                    # terminal 2
+SPENDLY_DATA_DIR=/tmp/spendly-st streamlit run app.py --server.port 8501             # terminal 3 (optional)
+python -m e2e.run_e2e --base http://localhost:3000 \
+    --streamlit http://localhost:8501 --streamlit-db /tmp/spendly-st/spendly_user.db # 70 checks, journeys A–G
+```
+
+It covers:
+- the demo journey, a statement import, invalid files, duplicates, filters and exports, and demo/privacy;
+- layouts at 375 / 768 / 1440 px, keyboard focus, accessible names, colour contrast, the skip link and dialogs;
+- the Streamlit app.
+
+The full QA write-up is in [docs/QA_REPORT.md](docs/QA_REPORT.md).
 
 ## What this project demonstrates
 

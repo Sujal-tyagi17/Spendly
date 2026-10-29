@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import math
 from bisect import bisect_left
+from functools import cached_property
 from dataclasses import dataclass
 
 import numpy as np
@@ -67,7 +68,7 @@ class Reference:
     def count(self) -> int:
         return len(self.amounts)
 
-    @property
+    @cached_property
     def median(self) -> float:
         return float(np.median(self.amounts))
 
@@ -201,6 +202,8 @@ def detect_anomalies(transactions: pd.DataFrame, reviews: dict[int, str] | None 
         median = ref.median
         ratio = amount / median if median else math.inf
         big_enough = amount >= p["min_ratio_to_median"] * median
+        if not big_enough:
+            continue  # both rules also require amount ≥ r × median; skip the costlier statistics
         q1, q3 = ref.quartiles()
         z = robust_z(amount, ref)
 

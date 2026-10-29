@@ -184,7 +184,13 @@ def init_db(conn: sqlite3.Connection) -> None:
 
 @contextmanager
 def transaction(conn: sqlite3.Connection) -> Iterator[sqlite3.Connection]:
-    """Commit on success, roll back everything on any error."""
+    """Commit on success, roll back everything on any error.
+
+    Re-entrant: inside an outer transaction it simply joins it, so the outer block
+    commits or rolls back everything together (used for bulk edits)."""
+    if conn.in_transaction:
+        yield conn
+        return
     try:
         conn.execute("BEGIN")
         yield conn

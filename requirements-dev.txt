@@ -2,3 +2,4 @@
 httpx>=0.27,<1      # FastAPI TestClient
 pytest>=8,<10
 reportlab>=4,<6   # only for generating the synthetic sample PDFs and PDF tests
+pytest-cov>=5,<8   # coverage report: pytest --cov=src --cov=api

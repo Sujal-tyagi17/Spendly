@@ -285,6 +285,10 @@ def list_transactions(
         }
 
 
+def _safe_cell(value: str) -> str:
+    return "'" + value if value[:1] in {"=", "+", "-", "@", "\t", "\r"} else value
+
+
 @app.get("/api/transactions/export.csv")
 def export_csv(c: CtxDep, f: FiltersDep):
     with c.conn() as conn:
@@ -303,6 +307,11 @@ def export_csv(c: CtxDep, f: FiltersDep):
     }) if not frame.empty else pd.DataFrame(columns=["transaction_date", "merchant", "description", "direction",
                                                      "amount_inr", "transaction_type", "category",
                                                      "categorization_method", "review_status", "balance_inr"])
+    # Spreadsheet apps execute cells that start with = + - @ (CSV/formula injection). Statement text
+    # is untrusted, so text columns get a leading apostrophe in that case. Numbers are untouched.
+    for column in ("merchant", "description", "category", "transaction_type", "categorization_method",
+                   "review_status", "direction"):
+        export[column] = export[column].astype(str).map(_safe_cell)
     buffer = io.StringIO()
     export.to_csv(buffer, index=False)
     return StreamingResponse(iter([buffer.getvalue()]), media_type="text/csv",
@@ -365,14 +374,15 @@ def update_transaction(transaction_id: int, body: TransactionPatch, c: CtxDep):
             targets = [database.get_transaction(conn, i) for i in ids]
 
         updated = 0
-        for row in targets:
-            changes = changes_for(row, body.transaction_type if row["id"] == transaction_id else None)
-            if row["id"] == transaction_id and body.mark_reviewed:
-                changes["review_status"] = "reviewed"
-                changes["is_possible_duplicate"] = 0
-            if changes:
-                database.update_transaction_fields(conn, row["id"], changes)
-                updated += 1
+        with database.transaction(conn):  # all rows change, or none do
+            for row in targets:
+                changes = changes_for(row, body.transaction_type if row["id"] == transaction_id else None)
+                if row["id"] == transaction_id and body.mark_reviewed:
+                    changes["review_status"] = "reviewed"
+                    changes["is_possible_duplicate"] = 0
+                if changes:
+                    database.update_transaction_fields(conn, row["id"], changes)
+                    updated += 1
         return {"updated": updated}
 
 

@@ -100,7 +100,7 @@ export default function AnalysisPage() {
       <section aria-labelledby="mom-title" className="space-y-4">
         <SectionHeader id="mom-title" title="Month over month"
           subtitle="A month with no statement is shown as missing, never as zero spending, so it can't fake a 100% drop." />
-        <Card className="overflow-x-auto">
+        <Card className="relative overflow-x-auto">
           <table className="w-full min-w-[720px] text-left text-[0.84rem]">
             <thead className="border-b border-line text-[0.72rem] text-muted"><tr>
               <th scope="col" className={th}>Month</th><th scope="col" className={`${th} text-right`}>Expenditure</th>
@@ -133,7 +133,7 @@ export default function AnalysisPage() {
             <SectionHeader title={lastMonth ? `What moved in ${monthLabel(lastMonth.month_start)}` : "Latest month"} level={3}
               subtitle="Each category's change and its share of the month's total change" />
             {latestCats.length === 0 ? <p className="mt-4 text-[0.84rem] text-muted">No earlier month to compare with.</p> : (
-              <div className="mt-3 overflow-x-auto">
+              <div className="relative mt-3 overflow-x-auto">
                 <table className="w-full min-w-[440px] text-left text-[0.82rem]">
                   <thead className="text-[0.7rem] text-muted"><tr>
                     <th scope="col" className={th}>Category</th><th scope="col" className={th}>Change</th>
@@ -159,7 +159,7 @@ export default function AnalysisPage() {
       <section aria-labelledby="mer-title" className="space-y-4">
         <SectionHeader id="mer-title" title="Merchant ranking" subtitle={`${data.merchant_count} merchants received spending in this period`}
           action={data.merchants.length > 10 ? <Button size="sm" variant="ghost" onClick={() => setShowAllMerchants((v) => !v)}>{showAllMerchants ? "Show top 10" : `Show top ${data.merchants.length}`}</Button> : null} />
-        <Card className="overflow-x-auto">
+        <Card className="relative overflow-x-auto">
           <table className="w-full min-w-[880px] text-left text-[0.82rem]">
             <caption className="sr-only">Merchants ranked by expenditure</caption>
             <thead className="border-b border-line text-[0.7rem] text-muted"><tr>
@@ -228,7 +228,7 @@ export default function AnalysisPage() {
             table={{ columns: ["Day", "Spent", "Payments", "Average"], rows: data.weekday.map((w) => [w.weekday_name, inr(w.expenditure_paise), w.transaction_count, inr(w.avg_transaction_paise)]) }}>
             <WeekdayChart data={data.weekday} />
           </ChartContainer>
-          <Card className="overflow-x-auto p-4 sm:p-5">
+          <Card className="relative overflow-x-auto p-4 sm:p-5">
             <SectionHeader title="By category" subtitle="Share of each category's spending that happened on weekends" level={3} />
             <table className="mt-3 w-full min-w-[420px] text-left text-[0.82rem]">
               <thead className="text-[0.7rem] text-muted"><tr>
