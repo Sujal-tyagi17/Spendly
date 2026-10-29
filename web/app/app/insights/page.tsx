@@ -64,7 +64,17 @@ export default function InsightsPage() {
                   {comp.change_pct === null ? "New" : pct(comp.change_pct)}
                 </dd></div>
             </dl>
-            {comp.is_partial ? <p className="mt-4 text-[0.78rem] text-faint">The latest month is partial, so it&apos;s compared with the same number of days of the previous month.</p> : null}
+            {data.story.points.filter((p) => p.key === "frequency" || p.key === "recurring").length ? (
+              <ul className="mt-5 grid max-w-4xl grid-cols-1 gap-3 md:grid-cols-2">
+                {data.story.points.filter((p) => p.key === "frequency" || p.key === "recurring").map((p) => (
+                  <li key={p.key} className="rounded-xl border border-line bg-ink-2/60 px-3.5 py-3 text-[0.84rem] leading-relaxed">
+                    <p className="text-[0.68rem] font-medium tracking-wide text-faint uppercase">{p.title}</p>
+                    <p className="mt-1 text-fg/85">{p.text}</p>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <div className="mt-4 space-y-1">{data.story.caveats.map((c) => <p key={c} className="text-[0.76rem] text-faint">{c}</p>)}</div>
           </Card>
         ) : (
           <EmptyState title="Not enough history to compare">

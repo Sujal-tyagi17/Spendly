@@ -251,6 +251,39 @@ The mean and standard deviation are pulled by the very outliers you're looking f
 MAD is 0 (e.g. identical subscription charges) it falls back to the mean absolute deviation. If every earlier
 payment was identical, only the "≥ 2× median" rule decides.
 
+## Executive overview, reporting and security
+
+**42. How do you make sure the dashboard and the PDF report never disagree?**
+Neither one does arithmetic of its own. The Overview KPIs come from `src/kpis.py`, which only reads existing,
+tested functions (`analytics.totals`, `monthly_summary`, `insights.compare_periods`, `budgets.month_report`). The
+report builder collects the same results for one month, and the PDF renderer only formats them. A test downloads
+the PDF through the API and checks its expenditure, income and budget figures against `/api/overview` for the same
+month and filters.
+
+**43. How do you explain *why* spending changed without claiming causes?**
+I break the change down into parts that add up exactly: by category, by merchant, and into a "count" part and a
+"size" part, `(n₁ − n₀) × avg₀ + n₁ × (avg₁ − avg₀)`. I also show whether recurring payments moved. The text says
+which parts moved most and ends with "associations, not proven causes". With a partial month or no previous
+spending it says so instead of producing a misleading percentage.
+
+**44. Why is "average month" computed only over complete months?**
+A month that's half-covered by statements, or cut by the date filter, would drag the average down. I exclude those
+months rather than scaling them up, which would be an assumption, and I show how many months were used.
+
+**45. How is one visitor's data kept away from another's?**
+There are no accounts. Locally there's one database per data mode. On a public deployment, each browser session
+sends a random id that selects private in-memory databases. IDs inside a request only reach that session's database.
+A test deletes "someone else's" transaction id from another session and checks nothing changes. The limits are
+written down: no login, no rate limiting, and a single worker process.
+
+**46. What did the security review change?**
+- `no-store` caching and baseline security headers on the API and the web app;
+- API docs off on public deployments;
+- tighter validation on filters, dates and the PDF password;
+- a test that "delete all my data" really empties every table and leaves the demo alone.
+
+Nothing has been penetration-tested, and the README says so.
+
 ## Numbers worth knowing (demo data)
 - 285 synthetic rows, April–September 2026. One exact duplicate is skipped, so 284 are imported.
 - The August spike comes from a ₹54,999 laptop. It's flagged as unusual at 29.8× the median of the 11 earlier Shopping
@@ -258,3 +291,5 @@ payment was identical, only the "≥ 2× median" rule decides.
 - Demo data quality: completeness 100%, uniqueness 99.6% (1 verbatim copy of 285), balance consistency 100%,
   categorisation coverage 91.5% (260 of 284), reconciliation n/a (the demo CSV prints no opening/closing balance).
 - 6 high-confidence recurring payments cost about ₹21,190 a month (estimated).
+- Overview: expenditure ₹3,25,627, income ₹3,90,508, net cash flow +₹26,830, average month ₹54,271 (6 complete months).
+  September vs August: −60.8%, mostly Shopping (the August laptop). There were fewer payments (54 → 36) and they were smaller on average.

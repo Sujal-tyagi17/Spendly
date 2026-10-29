@@ -94,7 +94,7 @@ npm start            # serve the production build
 | Variable | Purpose | Default |
 |---|---|---|
 | `SPENDLY_API_URL` | Where `/api/*` is forwarded. **Server-side only**, never sent to the browser | `http://127.0.0.1:8000` |
-| `NEXT_PUBLIC_APP_URL` | Target of every "Explore Spendly" button | `/app` |
+| `NEXT_PUBLIC_APP_URL` | Target of the "Explore Spendly" / "Try the demo" buttons | `/app` |
 | `NEXT_PUBLIC_SITE_URL` | Public URL of this site, used for absolute Open Graph image URLs | `http://localhost:3000` |
 
 Copy `.env.example` to `.env.local` to change them. `NEXT_PUBLIC_` values are **inlined at build time**, so
@@ -116,6 +116,10 @@ they must only ever hold public URLs. Invalid values fall back to the defaults.
   only possible in My data.
 - **Import:** choose a PDF, read it, review the preview, then import. Nothing is saved before you confirm.
 - **Editing:** single rows, or a whole merchant after a confirmation that shows the exact number of affected rows.
+- **Overview** shows executive KPIs from `/api/overview` → `executive` (no maths in React), the "why spending
+  changed" story, chart drill-downs (select a month, category or merchant), and a **Monthly report (PDF)** button
+  that downloads `/api/report/monthly.pdf` with the current non-date filters.
+- **Demo:** the landing page's "Try the demo" links to `/app?mode=demo`, which always opens synthetic data.
 - **Data Quality** (`/app/quality`) is a scorecard: six dimensions with numerator and denominator (no combined
   score), findings with severity and links to affected rows, a trend from the second import, and filters by
   import and issue type. The import preview shows the same validation report before you confirm.

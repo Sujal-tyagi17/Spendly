@@ -87,12 +87,14 @@ export function ChartContainer({ title, subtitle, table, children, height = 280,
 
 export type MonthRow = { month_start: string; expenditure_paise: number; income_paise: number };
 
-export function TrendChart({ data }: { data: MonthRow[] }) {
+export function TrendChart({ data, onSelectMonth }: { data: MonthRow[]; onSelectMonth?: (monthStart: string) => void }) {
   const reduced = useReducedMotion();
   const rows = data.map((d) => ({ month: d.month_start, Expenditure: d.expenditure_paise / 100, Income: d.income_paise / 100 }));
   return (
     <ResponsiveContainer width="100%" height="100%">
-      <ComposedChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+      <ComposedChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
+        style={onSelectMonth ? { cursor: "pointer" } : undefined}
+        onClick={onSelectMonth ? (state) => { const l = (state as { activeLabel?: string | number } | null)?.activeLabel; if (l) onSelectMonth(String(l)); } : undefined}>
         <defs>
           <linearGradient id="spendFill" x1="0" x2="0" y1="0" y2="1">
             <stop offset="0%" stopColor={C.lime2} stopOpacity={0.22} />

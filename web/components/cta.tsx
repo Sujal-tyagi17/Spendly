@@ -7,7 +7,8 @@ const base =
   "transition-[background-color,border-color,color,box-shadow] duration-300 ease-out-soft select-none";
 
 /** Primary CTA — opens the Spendly app (/app by default, or NEXT_PUBLIC_APP_URL). */
-export function ExploreButton({ className = "", label = "Explore Spendly" }: { className?: string; label?: string }) {
+export function ExploreButton({ className = "", label = "Explore Spendly", demo = false }: { className?: string; label?: string; demo?: boolean }) {
+  const href = demo ? `${site.appUrl}?mode=demo` : site.appUrl;
   const classes = `${base} bg-lime text-ink hover:bg-[#d4ff80] shadow-[0_0_0_1px_rgb(198_255_94/0.4),0_10px_30px_-12px_rgb(198_255_94/0.55)] ${className}`;
   const arrow = (
     <ArrowUpRight
@@ -17,7 +18,7 @@ export function ExploreButton({ className = "", label = "Explore Spendly" }: { c
   );
   if (isExternalAppUrl) {
     return (
-      <a href={site.appUrl} target="_blank" rel="noopener noreferrer" className={classes}>
+      <a href={href} target="_blank" rel="noopener noreferrer" className={classes}>
         {label}
         {arrow}
         <span className="sr-only">(opens the Spendly app in a new tab)</span>
@@ -25,7 +26,7 @@ export function ExploreButton({ className = "", label = "Explore Spendly" }: { c
     );
   }
   return (
-    <Link href={site.appUrl} className={classes}>
+    <Link href={href} className={classes}>
       {label}
       {arrow}
     </Link>

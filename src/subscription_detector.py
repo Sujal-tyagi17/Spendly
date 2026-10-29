@@ -207,3 +207,21 @@ def recurring_spend(conn, filters, candidates: list[Candidate]) -> dict:
             "share_pct": round(100 * rec / row.expenditure_paise, 1) if row.expenditure_paise else None,
         })
     return result
+
+
+def detect_for(conn, filters=None) -> list[Candidate]:
+    """Recurring candidates for a view (shared by the API, the KPIs and the monthly report).
+
+    A pattern needs history, so detection uses every payment up to the end of the view
+    (the start date is ignored): a one-month view can still show that Netflix recurs.
+    Spending *in* the view is always measured with the view's own dates elsewhere."""
+    from dataclasses import replace
+
+    from src import analytics, config, database
+
+    filters = filters or analytics.Filters()
+    _, data_end = analytics.date_bounds(conn)
+    history = replace(filters, start_date=None)
+    return detect_recurring(
+        analytics.recurring_candidates(conn, history, config.RECURRING.min_occurrences),
+        database.recurring_decisions(conn), as_of=filters.end_date or data_end)

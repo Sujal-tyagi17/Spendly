@@ -62,6 +62,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     let stored: Mode = "demo";
     try {
       stored = window.localStorage.getItem(MODE_KEY) === "user" ? "user" : "demo";
+      // Links from the landing page (?mode=demo) always open the synthetic demo.
+      if (new URLSearchParams(window.location.search).get("mode") === "demo") {
+        stored = "demo";
+        window.localStorage.setItem(MODE_KEY, "demo");
+      }
     } catch {}
     setApiMode(stored);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate from storage once

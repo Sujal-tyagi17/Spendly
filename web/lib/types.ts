@@ -28,6 +28,8 @@ export type MonthSummary = {
   transaction_count: number;
   prev_expenditure_paise: number | null;
   mom_change_pct: number | null;
+  is_covered: number | boolean;
+  is_full_month: number | boolean;
 };
 
 export type CategoryRow = {
@@ -105,7 +107,29 @@ export type QualityCounts = {
   needs_review: number;
 };
 
+export type Executive = {
+  period: { start: string | null; end: string | null; filter_start: string | null; filter_end: string | null };
+  expenditure_paise: number; income_paise: number; net_cash_flow_paise: number; refunds_paise: number; transaction_count: number;
+  average_monthly_expenditure: { value_paise: number | null; months: number };
+  month_over_month: { current_label: string; previous_label: string; current_paise: number; previous_paise: number;
+    change_paise: number; change_pct: number | null; is_partial: boolean } | null;
+  recurring: { estimated_monthly_paise: number; active_count: number; is_estimate: true };
+  budget: { month: string; basis: string; budget_paise: number; actual_paise: number; utilisation_pct: number | null;
+    is_full_month: boolean; status: string } | null;
+};
+
+export type ChangeStory = {
+  available: boolean; headline: string | null; caveats: string[]; facts: Record<string, number | null>;
+  points: { key: string; title: string; text: string; items: { name: string; change_paise: number; share_of_change_pct: number }[] }[];
+  current_label?: string; previous_label?: string;
+};
+
 export type Overview = {
+  executive: Executive;
+  story: ChangeStory;
+  weekend: WeekendRow[];
+  anomaly_count: number;
+  scorecard: { key: string; label: string; value_pct: number | null; numerator: number; denominator: number }[];
   totals: Totals;
   monthly: MonthSummary[];
   categories: CategoryRow[];
@@ -120,6 +144,7 @@ export type Overview = {
 export type ChangeRow = { current_paise: number; previous_paise: number; change_paise: number; change_pct: number | null };
 
 export type InsightsResponse = {
+  story: ChangeStory;
   comparison: Comparison | null;
   headline: Insight | null;
   category_changes: (ChangeRow & { category: string })[];

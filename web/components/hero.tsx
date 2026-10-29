@@ -60,7 +60,7 @@ export function Hero() {
             transition={{ duration: 0.6, delay: 0.65, ease }}
             className="mt-9 flex flex-col gap-3 sm:flex-row"
           >
-            <ExploreButton />
+            <ExploreButton demo label="Try the demo" />
             <SecondaryButton href="#how-it-works">See how it works</SecondaryButton>
           </motion.div>
 
@@ -71,7 +71,7 @@ export function Hero() {
             className="mt-8 flex items-start gap-2.5 text-[0.82rem] leading-relaxed text-faint"
           >
             <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-lime-2" aria-hidden="true" />
-            Statements are read in memory and never stored. Account numbers and UPI IDs are masked before anything is
+            The demo opens with synthetic transactions, so no upload is needed. Statements are read in memory and never stored. Account numbers and UPI IDs are masked before anything is
             saved.
           </motion.p>
         </div>

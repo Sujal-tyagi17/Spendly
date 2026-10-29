@@ -29,7 +29,7 @@ from pydantic import BaseModel, Field
 from api.serialize import clean, records, transaction_rows
 from api.state import MODES, ConnectionManager, PreviewStore, SessionError, is_public
 from src import (
-    ai, analytics, anomaly_detector, budgets, config, database, insights, metrics, pipeline, quality,
+    ai, analytics, anomaly_detector, budgets, config, database, insights, kpis, metrics, pipeline, quality, report,
     subscription_detector,
 )
 from src.analytics import FilterError, Filters
@@ -39,7 +39,10 @@ from src.privacy import get_logger
 
 log = get_logger("spendly.api")
 
-app = FastAPI(title="Spendly API", version="2.0.0", docs_url="/api/docs", openapi_url="/api/openapi.json")
+# Interactive API docs are on locally; on a public deployment they're off unless explicitly enabled.
+_docs = not is_public() or os.getenv("SPENDLY_API_DOCS", "").lower() in {"1", "true", "yes"}
+app = FastAPI(title="Spendly API", version="2.0.0", docs_url="/api/docs" if _docs else None,
+              redoc_url=None, openapi_url="/api/openapi.json" if _docs else None)
 
 _origins = [o.strip() for o in os.getenv("SPENDLY_CORS_ORIGINS", "http://localhost:3000").split(",") if o.strip()]
 app.add_middleware(
@@ -48,6 +51,18 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["Content-Type", "X-Spendly-Mode", "X-Spendly-Session"],
 )
+
+@app.middleware("http")
+async def _security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    # Financial data must not be stored by browsers or shared caches.
+    if request.url.path.startswith("/api/") and request.url.path not in {"/api/docs", "/api/openapi.json"}:
+        response.headers["Cache-Control"] = "no-store"
+    return response
+
 
 connections = ConnectionManager(public=is_public())
 previews = PreviewStore()
@@ -115,8 +130,12 @@ def filters_dep(
     bad_types = set(types) - set(config.TRANSACTION_TYPES)
     if bad_types:
         raise HTTPException(400, f"Unknown transaction type: {sorted(bad_types)[0]}")
-    if len(merchants) > 50:
-        raise HTTPException(400, "Too many merchants in one filter.")
+    if len(merchants) > 50 or any(len(m) > 120 for m in merchants):
+        raise HTTPException(400, "Too many (or too long) merchants in one filter.")
+    if len(categories) > 50 or len(types) > 10 or len(statuses) > 10:
+        raise HTTPException(400, "Too many filter values.")
+    if start and end and start > end:
+        raise HTTPException(400, "The start date is after the end date.")
     return Filters(start_date=start, end_date=end, categories=tuple(categories), transaction_types=tuple(types),
                    merchants=tuple(merchants), statuses=tuple(statuses), search=search)
 
@@ -170,10 +189,7 @@ def _quality_counts(conn) -> dict:
 
 
 def _recurring(conn, filters: Filters):
-    _, data_end = analytics.date_bounds(conn)
-    return subscription_detector.detect_recurring(
-        analytics.recurring_candidates(conn, filters, config.RECURRING.min_occurrences),
-        database.recurring_decisions(conn), as_of=filters.end_date or data_end)
+    return subscription_detector.detect_for(conn, filters)
 
 
 # ------------------------------------------------------------------ meta
@@ -215,9 +231,16 @@ def overview(c: CtxDep, f: FiltersDep):
         comp = insights.compare_periods(conn, f)
         anomalies, _ = anomaly_detector.detect_for_view(analytics.transactions(conn), analytics.transactions(conn, f),
                                                         database.anomaly_reviews(conn))
-        items = insights.build_insights(conn, f, _recurring(conn, f), anomalies)
+        candidates = _recurring(conn, f)
+        items = insights.build_insights(conn, f, candidates, anomalies)
         recent = analytics.transactions(conn, f, limit=8)
         return {
+            "executive": clean(kpis.executive_summary(conn, f, candidates)),
+            "story": clean(kpis.explain_change(conn, f, candidates)),
+            "weekend": records(analytics.weekend_split(conn, f)),
+            "anomaly_count": int(len(anomalies)),
+            "scorecard": clean([{k: d[k] for k in ("key", "label", "value_pct", "numerator", "denominator")}
+                                for d in quality.scorecard(conn)["dimensions"]]),
             "totals": clean(totals),
             "monthly": records(monthly.drop(columns=["month"], errors="ignore")),
             "categories": records(analytics.category_spending(conn, f)),
@@ -368,6 +391,7 @@ def remove_transaction(transaction_id: int, c: CtxDep):
 def insights_page(c: CtxDep, f: FiltersDep):
     with c.conn() as conn:
         comp = insights.compare_periods(conn, f)
+        story = kpis.explain_change(conn, f)
         txns = analytics.transactions(conn, f)
         flagged, info = anomaly_detector.detect_for_view(analytics.transactions(conn), txns,
                                                          database.anomaly_reviews(conn), include_reviewed=True)
@@ -376,6 +400,7 @@ def insights_page(c: CtxDep, f: FiltersDep):
         result = {
             "comparison": _comparison(comp),
             "headline": _insight(insights.describe_change(comp)) if comp else None,
+            "story": clean(story),
             "category_changes": records(comp.categories) if comp else [],
             "merchant_changes": records(comp.merchants[comp.merchants["change_paise"] != 0]) if comp else [],
             "insights": [_insight(i) for i in items],
@@ -539,6 +564,30 @@ def budget_drivers(c: CtxDep, category: Annotated[str, Query(max_length=60)], mo
                 "change": records(d["change"]), "largest": records(d["largest"])}
 
 
+# ----------------------------------------------------------------- report
+
+def _report_data(c: Ctx, f: Filters, month: str | None) -> dict:
+    with c.conn() as conn:
+        m = _month_param(month, conn)
+        return report.build_monthly_report(conn, m, f.without_dates(), mode=c.mode)
+
+
+@app.get("/api/report/monthly")
+def monthly_report(c: CtxDep, f: FiltersDep, month: Annotated[str | None, Query(max_length=10)] = None):
+    """The monthly report as data (the PDF is a layout of exactly this). Date filters are
+    replaced by the chosen month; category/type/merchant filters are kept."""
+    return clean(_report_data(c, f, month))
+
+
+@app.get("/api/report/monthly.pdf")
+def monthly_report_pdf(c: CtxDep, f: FiltersDep, month: Annotated[str | None, Query(max_length=10)] = None):
+    data = _report_data(c, f, month)
+    pdf = report.render_pdf(data)
+    name = f"spendly-report-{data['month'][:7]}{'-demo' if data['is_demo'] else ''}.pdf"
+    return StreamingResponse(io.BytesIO(pdf), media_type="application/pdf",
+                             headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
 # -------------------------------------------------------------- recurring
 
 @app.get("/api/recurring")
@@ -665,7 +714,7 @@ def _require_user_mode(c: Ctx) -> None:
 async def import_preview(
     c: CtxDep,
     file: Annotated[UploadFile, File()],
-    password: Annotated[str | None, Form()] = None,
+    password: Annotated[str | None, Form(max_length=128)] = None,
 ):
     _require_user_mode(c)
     limit = config.UPLOAD.max_file_size_bytes

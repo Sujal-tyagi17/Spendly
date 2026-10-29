@@ -15,23 +15,31 @@ RAW PDF → EXTRACTION → CLEANING → VALIDATION → SQL ANALYSIS → PATTERN 
 
 ### Spendly 2.0 at a glance
 
+**Who it's for:** people in India who pay mostly by UPI and card and want to understand their spending from the
+statements they already have, without linking a bank account to a third-party app. It's also built to show a
+recruiter the complete analyst workflow on realistic (synthetic) data.
+
 Spendly has **one Python core** (`src/` + `sql/`) and two interfaces on top of it:
 
 | Interface | Stack | Run it |
 |---|---|---|
-| **Web app (2.0)** — redesigned dark fintech UI at `/app`, plus the landing page | Next.js 16 + TypeScript + Tailwind + Motion + Recharts, talking to a thin **FastAPI** layer (`api/`) | see [Spendly 2.0: web app + API](#spendly-20-web-app--api) |
+| **Web app (2.0)**: dark fintech UI at `/app`, plus the landing page | Next.js 16 + TypeScript + Tailwind + Motion + Recharts, talking to a thin **FastAPI** layer (`api/`) | see [Spendly 2.0: web app + API](#spendly-20-web-app--api) |
 | **Classic app** | Streamlit (`app.py`) | `streamlit run app.py` |
 
-Every number in both comes from the same SQL files and Python modules. The web app never calculates
-money in JavaScript.
+Every number in both comes from the same SQL files and Python modules. The web app never calculates money in
+JavaScript. **Try it without uploading anything:** the app opens on synthetic demo data (see [Demo mode](#demo-mode)).
 
-| Web app overview | Import preview (nothing saved until you confirm) |
+| Executive overview | Spending insights ("why it changed") |
 |---|---|
-| ![Web overview](docs/screenshots/web-overview.png) | ![Import preview](docs/screenshots/web-import-preview.png) |
-| **Spending insights** | **Landing page** |
-| ![Web insights](docs/screenshots/web-insights.png) | ![Landing](docs/screenshots/web-landing.png) |
+| ![Web overview](docs/screenshots/web-overview.png) | ![Web insights](docs/screenshots/web-insights.png) |
+| **Transactions (filters, drill-down, edits)** | **Data-quality scorecard** |
+| ![Transactions](docs/screenshots/web-transactions.png) | ![Data quality](docs/screenshots/web-data-quality.png) |
+| **Budget planner** | **SQL analysis** |
+| ![Budgets](docs/screenshots/web-budgets.png) | ![Analysis](docs/screenshots/web-analysis.png) |
+| **Import preview (nothing saved until you confirm)** | **Landing page** |
+| ![Import preview](docs/screenshots/web-import-preview.png) | ![Landing](docs/screenshots/web-landing.png) |
 
-![Overview](docs/screenshots/overview.png)
+<img src="docs/screenshots/web-mobile.png" alt="Overview on a phone" width="260">
 
 ---
 
@@ -45,7 +53,9 @@ money in JavaScript.
 [Data-quality scorecard](#data-quality-scorecard) ·
 14. [Privacy](#20-privacy-and-security) · 15. [Optional AI](#21-optional-ai-setup) · 16. [Deployment](#22-deployment) ·
 17. [Limitations](#23-known-limitations) · 18. [Future work](#24-future-improvements) ·
-19. [Budget Planner](#budget-planner)
+19. [Budget Planner](#budget-planner) · [Executive overview & monthly report](#executive-overview-and-monthly-report) ·
+[Demo mode](#demo-mode) · [Security review](#security-review-and-data-isolation) · [Testing](#testing-and-verification) ·
+[Data Analyst relevance](#what-this-project-demonstrates)
 
 ---
 
@@ -549,8 +559,12 @@ Don't upload real statements to a public instance you don't control — run Spen
  Browser ──► Next.js (web/)                         FastAPI (api/)                    Python core (unchanged)
              • landing page  /                      • validates requests             • src/pipeline.py  (import)
              • app           /app/*   ── /api/* ──► • picks demo / user database ──► • src/analytics.py + sql/*.sql
-             • no money maths in JS    (rewrite)    • serializes results             • src/insights.py, subscription_detector.py,
-                                                                                       anomaly_detector.py, database.py
+             • no money maths in JS    (rewrite)    • serializes results             • src/kpis.py (executive KPIs, change story)
+                                                    • security headers              • src/insights.py, subscription_detector.py,
+                                                                                       anomaly_detector.py, budgets.py, quality.py
+                                                                                     • src/report.py (monthly PDF)
+                                                                                     • src/pdf_parser.py → transaction_normalizer.py
+                                                                                       → data_validator.py → categorizer.py → database.py
 ```
 
 - **Why an API layer instead of more Streamlit?** `src/` was already separate from the UI, so a thin API could
@@ -581,7 +595,7 @@ uvicorn api.main:app --reload --port 8000
 # 2) Web app (second terminal)
 cd web
 npm install
-npm run dev                                  # http://localhost:3000  → "Explore Spendly" opens /app
+npm run dev                                  # http://localhost:3000  → "Try the demo" opens /app on synthetic data
 ```
 
 The classic Streamlit app still works: `streamlit run app.py`.
@@ -598,13 +612,13 @@ The classic Streamlit app still works: `streamlit run app.py`.
 | `SPENDLY_DATA_DIR` | API / Streamlit | folder for the SQLite files | `./data` |
 | `SPENDLY_ENABLE_AI`, `GEMINI_API_KEY`, `GEMINI_MODEL` | API / Streamlit | optional AI (off by default; keys stay server-side) | off |
 | `SPENDLY_MAX_UPLOAD_MB`, `SPENDLY_MAX_PDF_PAGES` | API / Streamlit | upload limits | `10`, `60` |
+| `SPENDLY_API_DOCS` | API | show `/api/docs` on a public deployment | off when public, on locally |
+| `SPENDLY_ANOMALY_METHOD` | API / Streamlit | `robust_z_prior`, `iqr_prior`, `iqr_full` or `rule` | `robust_z_prior` |
+| `SPENDLY_BUDGET_NEAR_PCT`, `SPENDLY_BUDGET_PACE_MIN_DAYS` | API | budget "near limit" threshold and pace minimum | `80`, `7` |
 
 ### Checks
 
-```bash
-pytest                                   # Python core + API (from the repo root)
-cd web && npm run lint && npx tsc --noEmit && npm run build
-```
+See [Testing and verification](#testing-and-verification).
 
 ### Deploy
 
@@ -791,3 +805,146 @@ opening/closing balances that do and don't reconcile, an old database without th
   balance chain or reconciliation usually catches it.
 - Reports are stored from this version on. Older imports show "no stored report" and are excluded from the
   dimensions that need one.
+
+---
+
+## Executive overview and monthly report
+
+### Overview KPIs (`src/kpis.py` → `GET /api/overview` → `executive`)
+
+| KPI | Definition | Edge cases |
+|---|---|---|
+| Expenditure | spending debits (`{{is_expense}}`) before refunds | transfers and card-bill payments excluded |
+| Income | credits recognised as income (`{{is_income}}`) | money from friends isn't income until re-categorised |
+| Net cash flow | all credits − all debits, excluding own-account transfers | card-bill payments count (money really left) |
+| Average month | mean expenditure of months that are fully covered by statements **and** fully inside the date filter | partial months excluded, not scaled; n/a if none |
+| Change vs previous month | `insights.compare_periods`: latest month in view vs the one before | a partial month is compared with the same days of the previous month; n/a if the previous month had no spending |
+| Recurring (estimate) | monthly cost of active confirmed / high-confidence recurring payments | labelled an estimate; detection uses history up to the end of the view |
+| Budget used | latest month in view: expenditure ÷ overall budget (or ÷ sum of category budgets) × 100 | "so far" when the month is partial; hidden without budgets or data |
+| Unusual payments | count of unreviewed flags in the view (robust z-score vs earlier payments) | not fraud |
+
+The Overview also has the monthly trend (select a month to open its transactions), categories and top merchants
+(select one to drill down), weekday vs weekend **per calendar day**, a data-quality snapshot and recent
+transactions. Every value comes from the API.
+
+### "Why spending changed" (`kpis.explain_change`)
+
+For the latest month in view vs the previous one, built from existing results:
+
+- the headline from `insights.describe_change` (percentages only when the previous period had spending);
+- the categories and merchants that moved most in the same direction as the total, with their share of the change;
+- **more payments or bigger ones?** An exact decomposition:
+  `current − previous = (n₁ − n₀) × avg₀ + n₁ × (avg₁ − avg₀)`, i.e. a count part plus a size part;
+- **recurring payments**: actual spend at active recurring merchants in each period;
+- caveats: partial months, a previous period with no spending, no previous month. Every explanation ends with
+  "associations, not proven causes".
+
+The optional AI summary can only rephrase these sentences. Any number not present in the source text makes Spendly
+discard the AI output (`ai.validate_rephrase`), and everything works with AI off.
+
+### Monthly report (`src/report.py`)
+
+`GET /api/report/monthly.pdf?month=YYYY-MM` (button on the Overview) produces an A4 PDF. `GET /api/report/monthly`
+returns the same content as JSON. It contains:
+- reporting period, coverage, and any filters applied;
+- KPIs, the 6-month trend (months without a statement are marked), and the "what changed and why" story;
+- category and merchant tables, and category month-over-month;
+- budget vs actual, recurring payments, unusual payments and other observations;
+- data-quality results and limitations.
+
+`build_monthly_report` only collects results from the modules above and does no financial arithmetic.
+`render_pdf` only lays them out, so the report can't disagree with the dashboard. Category, type and merchant
+filters carry over; the date range becomes the chosen month. Demo reports say **SYNTHETIC DEMO DATA** in a banner
+and on every page footer. The PDF uses the bundled DejaVu Sans (`assets/fonts`, free licence included), so `₹`
+renders everywhere. `tests/test_report.py` downloads the PDF through the API and checks that its figures equal
+`/api/overview` for the same month and filters.
+
+## Demo mode
+
+There is a single demo system (`pipeline.load_demo_dataset`), shared by the Streamlit app and the API:
+
+- **Data.** `data/sample_transactions.csv` holds 285 synthetic rows (Apr–Sep 2026), imported through the same
+  pipeline as a real PDF. It also seeds synthetic Jul–Sep budgets.
+- **Labelling.** Everything says it is synthetic: the "Demo · synthetic" badge, the banner on every app page,
+  the sidebar status, "synthetic" in exported PDF reports, and the `-demo` suffix on report file names.
+- **Separation.** Demo and *My data* are separate SQLite databases (`spendly_demo.db` / `spendly_user.db`). On a
+  public deployment, each browser session gets its own in-memory pair. Importing works only in *My data*, and
+  deleting only affects *My data*.
+- **Reset.** *Import & Settings → Reset demo data* rebuilds the demo from the CSV. Edits, deletions, reviews and
+  budget changes are all reverted. A test checks that totals after a reset equal the initial state.
+- **Access.** The landing page's **Try the demo** opens `/app?mode=demo`, which always starts in demo mode.
+
+## Security review and data isolation
+
+This is a review of the code and configuration. Nothing has been penetration-tested, and Spendly does **not**
+claim production-grade security.
+
+| Area | Current state |
+|---|---|
+| Identity model | **No user accounts.** Locally: one machine, one *My data* database. Public mode: a random UUID (122 random bits) per browser tab session (`X-Spendly-Session`, validated `[A-Za-z0-9_-]{16,64}`) selects private in-memory databases. Whoever holds the id holds the data; there is no login. |
+| Isolation | Every query runs on the connection chosen from (mode, session). Transaction ids are only meaningful inside that database, so changing an id in a request can't reach another session (tested). Import previews are bound to their owner and mode. |
+| Uploads | `.pdf` extension + `%PDF` signature + size limit (read stops at limit + 1 byte) + page limit; password field ≤ 128 chars; PDFs parsed in memory, never written to disk (tested). |
+| Request validation | categories, types and statuses whitelisted; ≤ 50 merchants of ≤ 120 chars; search ≤ 100 chars; start ≤ end; page size ≤ 250; Pydantic bodies; month formats validated. |
+| Errors | Unhandled errors return a generic message; only the exception *type* is logged. Validation errors return a useful message without stack traces. |
+| Logs | Counts only. A redacting log filter masks identifiers as a second line of defence. pdfminer debug output is silenced (tested). |
+| Headers | API: `Cache-Control: no-store`, `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`. Web: the same plus `Permissions-Policy`, and no `X-Powered-By`. |
+| CORS | Only `SPENDLY_CORS_ORIGINS` (default `http://localhost:3000`); no credentials; limited methods/headers. The browser normally uses the same-origin rewrite instead. |
+| Secrets | `GEMINI_API_KEY` is read only by the API. The only `NEXT_PUBLIC_*` variables are public URLs. |
+| Deletion | `DELETE /api/data` (user mode, requires `"DELETE"`) empties every table, then `VACUUM`s. A test checks all seven tables are empty and the demo is untouched. |
+| API docs | `/api/docs` is off on public deployments unless `SPENDLY_API_DOCS=true`. |
+| Dependencies | Bounded version ranges. `npm audit --omit=dev` reported 0 vulnerabilities on 2026-10-29. Python packages weren't audited with a vulnerability scanner. |
+
+**Known limitations:** no authentication or rate limiting; the local SQLite file is unencrypted; a session id
+in `sessionStorage` is readable by scripts on the same origin; there is no Content-Security-Policy yet (it depends
+on the host); uvicorn's access log records request URLs, which can include search text and merchant filter values,
+so turn access logs off (`--no-access-log`) on a shared host. Public mode keeps data in one process's memory, so it
+needs a single worker.
+
+**Before you deploy (manual checks):** set `SPENDLY_PUBLIC_DEPLOYMENT=true`; set `SPENDLY_CORS_ORIGINS` to your web
+origin; run uvicorn with one worker and `--no-access-log`; keep `/api/docs` off; confirm HTTPS on both hosts; add a CSP
+and rate limiting at the host or proxy; check the host's upload-size limit matches `SPENDLY_MAX_UPLOAD_MB`; open the
+site in two browsers and confirm they don't see each other's *My data*; and don't upload real statements to an
+instance you don't control.
+
+## Testing and verification
+
+```bash
+# Python core, API and integration tests (from the repo root, in your virtualenv)
+pip install -r requirements-dev.txt
+pytest                                        # 315 tests at the time of writing
+
+# Reproduce the evaluations (deterministic)
+python -m scripts.evaluate_anomalies          # unusual-payment detector, labelled synthetic data
+python -m scripts.evaluate_parsers            # parser accuracy on synthetic PDF fixtures
+
+# Web app
+cd web
+npm install
+npm run lint
+npx tsc --noEmit
+npm run build
+```
+
+| Suite | What it covers |
+|---|---|
+| `test_normalization`, `test_pdf_parser`, `test_categorization`, `test_database`, `test_privacy` | parsing, cleaning, masking, storage, privacy |
+| `test_analytics`, `test_advanced_analytics`, `test_insights`, `test_subscriptions` | SQL metrics against hand-computed values |
+| `test_quality`, `test_anomalies`, `test_budgets` | data-quality dimensions, detector evaluation, budgets |
+| `test_report` | executive KPIs, change explanations, PDF report vs dashboard, demo reset, deletion, security headers, isolation |
+| `test_api` | HTTP layer, imports, edits, public-mode sessions |
+
+Browser journeys (demo → every page → filters → drill-down → PDF report → data quality → reset → empty state, at
+1440 px and 390 px) were run with Playwright during development; they aren't part of `pytest`.
+
+## What this project demonstrates
+
+| Skill | Where to look |
+|---|---|
+| Data cleaning and preprocessing | `transaction_normalizer.py` (dates that refuse to guess, paise, masking), `merchant_normalizer.py`, `duplicates.py` |
+| SQL analytics | `sql/*.sql`: CTEs, recursive calendars, window functions (`LAG`, running `SUM`, `RANK`), a SQLite median, conditional aggregation, one shared metric definition |
+| KPI development | `src/kpis.py`, `src/metrics.py`, budget metrics: each with a written definition and edge-case rules |
+| Exploratory analysis | SQL Analysis page: concentration (HHI), weekday/weekend per day, merchant stats, category trends |
+| Data visualisation | Recharts dashboards with table fallbacks, drill-down to transactions, a printable PDF report |
+| Statistical evaluation | `docs/ANOMALY_EVALUATION.md`: baselines, temporal split, precision/recall/F1, seed stability, leakage test |
+| Data-quality validation | `src/quality.py`: six dimensions, running-balance and opening/closing reconciliation, parser evaluation |
+| Business insights and reporting | "why spending changed" decomposition, budget variance, monthly PDF report with limitations |
