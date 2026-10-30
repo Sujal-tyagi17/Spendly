@@ -62,10 +62,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     let stored: Mode = "demo";
     try {
       stored = window.localStorage.getItem(MODE_KEY) === "user" ? "user" : "demo";
-      // Links from the landing page (?mode=demo) always open the synthetic demo.
-      if (new URLSearchParams(window.location.search).get("mode") === "demo") {
-        stored = "demo";
-        window.localStorage.setItem(MODE_KEY, "demo");
+      // Links from the landing page choose the data source: ?mode=demo opens the synthetic
+      // demo, ?mode=user opens My data.
+      const fromLink = new URLSearchParams(window.location.search).get("mode");
+      if (fromLink === "demo" || fromLink === "user") {
+        stored = fromLink;
+        window.localStorage.setItem(MODE_KEY, fromLink);
       }
     } catch {}
     setApiMode(stored);

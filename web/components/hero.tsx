@@ -2,7 +2,7 @@
 
 import { motion } from "motion/react";
 import { ShieldCheck } from "lucide-react";
-import { ExploreButton, SecondaryButton } from "./cta";
+import { ExploreButton, MyDataButton } from "./cta";
 import { HeroDashboard } from "./hero-dashboard";
 
 const ease = [0.22, 1, 0.36, 1] as const;
@@ -61,7 +61,7 @@ export function Hero() {
             className="mt-9 flex flex-col gap-3 sm:flex-row"
           >
             <ExploreButton demo label="Try the demo" />
-            <SecondaryButton href="#how-it-works">See how it works</SecondaryButton>
+            <MyDataButton />
           </motion.div>
 
           <motion.p
