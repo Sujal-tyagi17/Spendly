@@ -423,7 +423,7 @@ function CategoryRules() {
       {rules.length === 0 ? (
         <p className="mt-4 text-[0.84rem] text-muted">No rules yet. Fix a category on the Transactions page and it will appear here.</p>
       ) : (
-        <div className="mt-4 overflow-x-auto">
+        <div className="relative mt-4 overflow-x-auto">
           <table className="w-full text-left text-[0.84rem]">
             <caption className="sr-only">Category rules learned from your fixes</caption>
             <thead><tr className="border-b border-line text-[0.72rem] text-muted">

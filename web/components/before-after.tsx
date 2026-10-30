@@ -70,7 +70,7 @@ export function BeforeAfter() {
                   </button>
                 ))}
               </div>
-              <SyntheticBadge className="hidden sm:inline-flex" />
+              <span className="hidden sm:block"><SyntheticBadge /></span>
             </div>
 
             <div id="compare-panel" role="tabpanel" aria-labelledby={`tab-${view}`} className="min-h-[360px] p-2">

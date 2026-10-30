@@ -10,7 +10,7 @@ const lines = ["Your money has a story.", "It's time to read it."];
 
 export function Hero() {
   return (
-    <section id="top" aria-labelledby="hero-title" className="relative overflow-hidden pt-32 pb-20 sm:pt-40 lg:pb-24">
+    <section id="top" aria-labelledby="hero-title" className="relative overflow-hidden pt-32 pb-6 sm:pt-40 sm:pb-20 lg:pb-24">
       <div aria-hidden="true" className="atmosphere pointer-events-none absolute inset-0" />
       <div aria-hidden="true" className="grid-fade pointer-events-none absolute inset-0" />
 
