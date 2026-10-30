@@ -627,6 +627,16 @@ See [Testing and verification](#testing-and-verification).
 
 ### Deploy
 
+**One service on Render (simplest).** The repository's `Dockerfile` builds the dashboard and runs it together with
+the API in one container: Next.js serves the public port and forwards `/api/*` to FastAPI on `127.0.0.1:8000`, which
+is not reachable from outside. Public mode (`SPENDLY_PUBLIC_DEPLOYMENT=true`) is set in the image. On render.com:
+New → Blueprint (uses `render.yaml`) or New → Web Service → Language: Docker, plan Free. Checked by running the
+same build and start script locally: the public-session browser journey passed (7/7) and memory was about 380 MB
+with 7 visitors who each imported a statement (free plan: 512 MB). Behind the built-in proxy every visitor shares
+one IP address, so the per-IP limit on new sessions (10 a minute) applies to all visitors together.
+
+**Or two services:**
+
 1. **API** on any Python host that runs a long-lived process (for example Render or Railway):
    - build: `pip install -r requirements-api.txt`
    - start: `uvicorn api.main:app --host 0.0.0.0 --port $PORT --workers 1 --forwarded-allow-ips <your proxy's IP>`
