@@ -49,7 +49,7 @@ export function SecondaryButton({ href, children, className = "" }: { href: stri
 }
 
 /** Secondary CTA — opens the app on My data (the user's own statements). */
-export function MyDataButton({ className = "", label = "Use my own statement" }: { className?: string; label?: string }) {
+export function MyDataButton({ className = "", label = "Use your own statement" }: { className?: string; label?: string }) {
   const href = `${site.appUrl}?mode=user`;
   const classes = `${base} hairline bg-white/[0.02] text-fg hover:border-line-2 hover:bg-white/[0.05] ${className}`;
   const icon = <Upload aria-hidden="true" className="h-4 w-4 text-muted transition-transform duration-300 ease-out-soft group-hover:-translate-y-0.5" />;
