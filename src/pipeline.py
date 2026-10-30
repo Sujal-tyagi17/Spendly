@@ -56,7 +56,14 @@ class ImportPreview:
 
     @property
     def uncategorized(self) -> int:
-        return sum(1 for r in self.rows if r["categorization_method"] == "none")
+        """Uncategorised rows that will actually be imported (skipped exact duplicates don't count)."""
+        return sum(1 for r in self.rows
+                   if r["categorization_method"] == "none" and not r["duplicate_status"].startswith("exact"))
+
+    @property
+    def from_your_rules(self) -> int:
+        return sum(1 for r in self.rows
+                   if r["categorization_method"] == "user_rule" and not r["duplicate_status"].startswith("exact"))
 
     def to_frame(self) -> pd.DataFrame:
         frame = pd.DataFrame(self.rows)
@@ -71,6 +78,7 @@ def _process(records_raw: list[RawRow], parse: ParseResult | None, *, display_na
              parser_name: str, parser_label: str, period: tuple[str | None, str | None],
              extra_warnings: list[str]) -> ImportPreview:
     rules = load_rules()
+    user_rules = database.merchant_rules(conn) if conn is not None else {}
     records = normalize_rows(records_raw, date_formats)
     quality = summarize(records)
 
@@ -83,6 +91,14 @@ def _process(records_raw: list[RawRow], parse: ParseResult | None, *, display_na
             continue
         result = categorize(record.description, record.direction, rules)
         needs_review = result.needs_review
+        row_type, row_category, row_method, row_reason = (result.transaction_type, result.category,
+                                                          result.method, result.review_reason)
+        # Your own earlier fix for this merchant beats a built-in merchant match or no match at all,
+        # but never the structural rules (salary, own transfers, card bills), which come first.
+        learned = user_rules.get((result.merchant, record.direction))
+        if learned and result.method in {"none", "merchant"}:
+            row_category, row_type = learned
+            row_method, needs_review, row_reason = "user_rule", False, None
         rows.append({
             "row_number": record.row_number,
             "page": record.page,
@@ -91,12 +107,12 @@ def _process(records_raw: list[RawRow], parse: ParseResult | None, *, display_na
             "normalized_merchant": result.merchant,
             "amount_paise": record.amount_paise,
             "direction": record.direction,
-            "transaction_type": result.transaction_type,
-            "category": result.category,
-            "categorization_method": result.method,
+            "transaction_type": row_type,
+            "category": row_category,
+            "categorization_method": row_method,
             "review_status": "needs_review" if needs_review else "ok",
-            "review_reason": result.review_reason,
-            "is_transfer": 1 if result.transaction_type == "transfer" else 0,
+            "review_reason": row_reason,
+            "is_transfer": 1 if row_type == "transfer" else 0,
             "is_possible_duplicate": 0,
             "balance_paise": record.balance_paise,
             "has_strong_key": record.balance_paise is not None or bool(record.reference),
@@ -109,6 +125,9 @@ def _process(records_raw: list[RawRow], parse: ParseResult | None, *, display_na
     for row in rows:
         row["balance_check"] = ("mismatch" if row["row_number"] in mismatch_rows
                                 else "ok" if row["row_number"] in checked_rows else None)
+        if row["balance_check"] == "mismatch" and row["review_status"] == "ok":
+            row["review_status"] = "needs_review"
+            row["review_reason"] = database.BALANCE_MISMATCH_REASON
 
     mark_duplicates(rows, conn)
     for row in rows:

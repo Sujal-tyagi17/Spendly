@@ -308,6 +308,24 @@ Public mode already needs a single process (sessions live in memory), so an in-p
 there and needs no new infrastructure. The docs say plainly that it isn't distributed: with N workers you'd get N×
 the limit, and you'd move to Redis only if you scale out.
 
+## Learning from corrections (found while testing the 5 demo statements)
+
+**51. How does Spendly learn from your category fixes, and what stops it doing damage?**
+When you change a merchant's category, the fix is saved as a rule keyed by merchant **and direction**, because
+money from a friend and money to a friend mean different things. On the next import the rule fills rows that the
+built-in rules left uncategorised, and it overrides a built-in merchant match, because your fix is more specific.
+It never overrides the structural rules (salary, own-account transfers, card bills), which run first. Setting a
+merchant back to "Other" deletes its rule rather than saving "Other" as a category, so coverage can't be inflated.
+Rules are listed on Import & Settings with a Forget button, and they're deleted with your data. In testing, Rohan's
+four PhonePe transfers were categorised automatically after one fix on the bank statement.
+
+**52. Why does a misprinted balance land in "Needs review" when the statement still reconciles?**
+Reconciliation (opening + credits − debits = closing) proves the amounts add up. A running-balance mismatch on one
+row means a printed figure next to it disagrees. Both can be true: the amounts are right and one balance is
+misprinted. The row is still worth a look, so it goes under Needs review with the reason, until you mark it reviewed.
+Data-quality counts also ignore exact duplicates that were skipped, so a copied row is never reported as
+"uncategorised" when it was never imported.
+
 ## Numbers worth knowing (demo data)
 - 285 synthetic rows, April–September 2026. One exact duplicate is skipped, so 284 are imported.
 - The August spike comes from a ₹54,999 laptop. It's flagged as unusual at 29.8× the median of the 11 earlier Shopping

@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     transaction_type      TEXT NOT NULL CHECK (transaction_type IN
                               ('expense', 'income', 'refund', 'transfer', 'cc_repayment', 'other')),
     category              TEXT NOT NULL REFERENCES categories(category_name),
-    categorization_method TEXT NOT NULL,                 -- rule | merchant | ai | manual | none
+    categorization_method TEXT NOT NULL,                 -- rule | merchant | user_rule | ai | manual | none
     review_status         TEXT NOT NULL DEFAULT 'ok',    -- ok | needs_review | reviewed
     review_reason         TEXT,
     is_transfer           INTEGER NOT NULL DEFAULT 0,
@@ -118,6 +118,27 @@ CREATE TABLE IF NOT EXISTS budgets (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ux_budget_month_category ON budgets(month, COALESCE(category, '*'));
 
+-- Category rules learned from the user's own corrections, keyed by merchant and
+-- direction (money from Rohan and money to Rohan can mean different things).
+-- Applied automatically to future imports; see pipeline._apply_user_rules.
+CREATE TABLE IF NOT EXISTS merchant_rules (
+    id               INTEGER PRIMARY KEY,
+    merchant         TEXT NOT NULL,
+    direction        TEXT NOT NULL CHECK (direction IN ('debit', 'credit')),
+    category         TEXT NOT NULL REFERENCES categories(category_name),
+    transaction_type TEXT NOT NULL CHECK (transaction_type IN
+                         ('expense', 'income', 'refund', 'transfer', 'cc_repayment', 'other')),
+    created_at       TEXT NOT NULL,
+    updated_at       TEXT NOT NULL,
+    UNIQUE (merchant, direction)
+);
+
+-- One-time data migrations that have already run (so they never run twice).
+CREATE TABLE IF NOT EXISTS schema_meta (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 -- Log of manual category corrections (for the Data Quality page).
 CREATE TABLE IF NOT EXISTS manual_corrections (
     id             INTEGER PRIMARY KEY,
@@ -128,6 +149,9 @@ CREATE TABLE IF NOT EXISTS manual_corrections (
     corrected_at   TEXT NOT NULL
 );
 """
+
+
+BALANCE_MISMATCH_REASON = "Running balance didn't add up at this row: compare it with the statement"
 
 
 class DatabaseError(RuntimeError):
@@ -187,6 +211,38 @@ def _migrate(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
+def _run_once(conn: sqlite3.Connection, key: str, statements: list[tuple[str, tuple]]) -> None:
+    """Run a data migration exactly once per database (recorded in schema_meta)."""
+    if conn.execute("SELECT 1 FROM schema_meta WHERE key = ?", (key,)).fetchone():
+        return
+    with transaction(conn):
+        for sql, params in statements:
+            conn.execute(sql, params)
+        conn.execute("INSERT INTO schema_meta (key, value) VALUES (?, ?)", (key, now_iso()))
+
+
+# Data migrations for databases created by an older version.
+_DATA_MIGRATIONS = {
+    # Rows whose printed running balance didn't add up now appear under "Needs review".
+    "flag_balance_mismatches_v1": [
+        ("""UPDATE transactions SET review_status = 'needs_review', review_reason = COALESCE(review_reason, ?)
+            WHERE balance_check = 'mismatch' AND review_status = 'ok'""", (BALANCE_MISMATCH_REASON,)),
+    ],
+    # Turn category fixes made before rules existed into rules (latest fix per merchant wins).
+    "merchant_rules_from_corrections_v1": [
+        ("""INSERT INTO merchant_rules (merchant, direction, category, transaction_type, created_at, updated_at)
+            SELECT normalized_merchant, direction, category, transaction_type, updated_at, updated_at
+            FROM transactions t
+            WHERE categorization_method = 'manual' AND category != ? AND normalized_merchant != 'Unknown'
+              AND id = (SELECT id FROM transactions u
+                        WHERE u.normalized_merchant = t.normalized_merchant AND u.direction = t.direction
+                          AND u.categorization_method = 'manual'
+                        ORDER BY u.updated_at DESC, u.id DESC LIMIT 1)
+            ON CONFLICT (merchant, direction) DO NOTHING""", (config.UNCATEGORIZED,)),
+    ],
+}
+
+
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
     _migrate(conn)
@@ -195,6 +251,8 @@ def init_db(conn: sqlite3.Connection) -> None:
             "INSERT OR IGNORE INTO categories (category_name) VALUES (?)",
             [(c,) for c in config.CATEGORIES],
         )
+    for key, statements in _DATA_MIGRATIONS.items():
+        _run_once(conn, key, statements)
 
 
 @contextmanager
@@ -332,6 +390,9 @@ def update_transaction_fields(conn: sqlite3.Connection, transaction_id: int, cha
                        review_reason = NULL, is_transfer = ? WHERE id = ?""",
                 (1 if new_type == "transfer" else 0, transaction_id),
             )
+            # Remember the fix for this merchant so future imports use it.
+            save_merchant_rule(conn, current["normalized_merchant"], current["direction"],
+                               changes.get("category", current["category"]), new_type)
 
 
 def delete_transaction(conn: sqlite3.Connection, transaction_id: int) -> None:
@@ -343,7 +404,7 @@ def clear_all_data(conn: sqlite3.Connection) -> None:
     """Delete every imported statement, transaction and decision."""
     with transaction(conn):
         for table in ("anomaly_reviews", "manual_corrections", "import_issues",
-                      "transactions", "statements", "recurring_decisions", "budgets"):
+                      "transactions", "statements", "recurring_decisions", "budgets", "merchant_rules"):
             conn.execute(f"DELETE FROM {table}")  # fixed table names, not user input
     conn.execute("VACUUM")  # actually shrink the file so deleted rows don't linger
 
@@ -379,3 +440,45 @@ def set_anomaly_review(conn: sqlite3.Connection, transaction_id: int, status: st
 
 def anomaly_reviews(conn: sqlite3.Connection) -> dict[int, str]:
     return {r["transaction_id"]: r["status"] for r in conn.execute("SELECT * FROM anomaly_reviews")}
+
+
+# ------------------------------------------------------------ merchant rules
+
+def save_merchant_rule(conn: sqlite3.Connection, merchant: str, direction: str, category: str,
+                       transaction_type: str) -> None:
+    """Create or update the rule for (merchant, direction). Setting a merchant back to the
+    uncategorised bucket removes its rule instead, so "Other" never counts as categorised."""
+    with transaction(conn):
+        if category == config.UNCATEGORIZED or merchant == "Unknown":
+            conn.execute("DELETE FROM merchant_rules WHERE merchant = ? AND direction = ?", (merchant, direction))
+            return
+        stamp = now_iso()
+        conn.execute(
+            """INSERT INTO merchant_rules (merchant, direction, category, transaction_type, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT (merchant, direction) DO UPDATE SET category = excluded.category,
+                   transaction_type = excluded.transaction_type, updated_at = excluded.updated_at""",
+            (merchant, direction, category, transaction_type, stamp, stamp),
+        )
+
+
+def merchant_rules(conn: sqlite3.Connection) -> dict[tuple[str, str], tuple[str, str]]:
+    """{(merchant, direction): (category, transaction_type)}"""
+    return {(r["merchant"], r["direction"]): (r["category"], r["transaction_type"])
+            for r in conn.execute("SELECT * FROM merchant_rules")}
+
+
+def list_merchant_rules(conn: sqlite3.Connection) -> list[dict]:
+    """Rules with how many saved transactions each currently matches."""
+    return [dict(r) for r in conn.execute(
+        """SELECT m.id, m.merchant, m.direction, m.category, m.transaction_type, m.updated_at,
+                  (SELECT COUNT(*) FROM transactions t
+                   WHERE t.normalized_merchant = m.merchant AND t.direction = m.direction) AS transactions
+           FROM merchant_rules m ORDER BY m.merchant, m.direction""")]
+
+
+def delete_merchant_rule(conn: sqlite3.Connection, rule_id: int) -> bool:
+    """Forget a rule. Transactions already categorised keep their category."""
+    with transaction(conn):
+        cur = conn.execute("DELETE FROM merchant_rules WHERE id = ?", (rule_id,))
+    return cur.rowcount > 0

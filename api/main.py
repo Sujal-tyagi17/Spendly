@@ -481,6 +481,23 @@ def remove_transaction(transaction_id: int, c: CtxDep):
         return {"deleted": 1}
 
 
+# ---------------------------------------------------------- category rules
+
+@app.get("/api/rules")
+def list_rules(c: CtxDep):
+    """Category rules learned from your own fixes, applied to future imports."""
+    with c.conn() as conn:
+        return {"rules": database.list_merchant_rules(conn)}
+
+
+@app.delete("/api/rules/{rule_id}")
+def delete_rule(rule_id: int, c: CtxDep):
+    with c.conn() as conn:
+        if not database.delete_merchant_rule(conn, rule_id):
+            raise HTTPException(404, "Rule not found.")
+        return {"deleted": 1}
+
+
 # --------------------------------------------------------------- insights
 
 @app.get("/api/insights")
@@ -771,7 +788,8 @@ def _preview_payload(token: str, preview: pipeline.ImportPreview) -> dict:
     q = preview.quality
     enabled, message = ai.ai_status()
     uncategorized = sorted({r["normalized_merchant"] for r in preview.rows
-                            if r["categorization_method"] == "none" and r["direction"] == "debit"})
+                            if r["categorization_method"] == "none" and r["direction"] == "debit"
+                            and not r["duplicate_status"].startswith("exact")})
     rows = [{
         "row_number": r["row_number"], "page": r["page"], "date": r["transaction_date"],
         "description": r["description"], "merchant": r["normalized_merchant"],
@@ -787,6 +805,7 @@ def _preview_payload(token: str, preview: pipeline.ImportPreview) -> dict:
             "extracted": q.total_extracted, "valid": q.valid, "invalid": q.invalid,
             "exact_duplicates": preview.exact_duplicates, "possible_duplicates": preview.possible_duplicates,
             "uncategorized": preview.uncategorized,
+            "from_your_rules": preview.from_your_rules,
             "to_import": len(preview.rows) - preview.exact_duplicates,
         },
         "balance_check": {"checked_pairs": q.balance_check.checked_pairs, "mismatches": q.balance_check.mismatches},

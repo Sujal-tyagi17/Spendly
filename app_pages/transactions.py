@@ -13,7 +13,7 @@ if not ui.require_data(conn):
 TYPE_LABELS = config.TRANSACTION_TYPES
 LABEL_TO_TYPE = {v: k for k, v in TYPE_LABELS.items()}
 METHOD_LABELS = {"rule": "Rule", "merchant": "Merchant rule", "ai": "AI suggestion", "manual": "Manual",
-                 "none": "Uncategorized"}
+                 "user_rule": "Your rule", "none": "Uncategorized"}
 
 top = st.columns([3, 1.2, 1.2, 1])
 search = top[0].text_input("Search", placeholder="Search merchant or description…", label_visibility="collapsed")

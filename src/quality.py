@@ -116,8 +116,9 @@ def import_report(preview, include_exact_duplicates: bool = False) -> dict:
     Row buckets are mutually exclusive and add up:
         rows_extracted = rows_rejected + rows_accepted
         rows_accepted  = rows_to_import + exact_duplicates_skipped
-    Flags (possible duplicates, uncategorised, …) are counted on accepted rows and
-    can overlap, so they are never added together.
+    Flags (possible duplicates, uncategorised, …) are counted on the rows that are
+    actually imported (a skipped exact duplicate isn't flagged twice) and can overlap,
+    so they are never added together.
     """
     q = preview.quality
     rejected_by_reason = {code: 0 for code in _REJECT_PRIORITY}
@@ -139,11 +140,13 @@ def import_report(preview, include_exact_duplicates: bool = False) -> dict:
     complete = extracted - incomplete
     balance = q.balance_check
     rec = preview.reconciliation
+    imported = [r for r in rows if include_exact_duplicates or not r["duplicate_status"].startswith("exact")]
     flags = {
-        "possible_duplicates": sum(1 for r in rows if r["duplicate_status"] == "possible"),
-        "uncategorised": sum(1 for r in rows if r["categorization_method"] == "none"),
-        "unknown_merchant": sum(1 for r in rows if r["normalized_merchant"] == "Unknown"),
-        "needs_review": sum(1 for r in rows if r["review_status"] == "needs_review"),
+        "possible_duplicates": sum(1 for r in imported if r["duplicate_status"] == "possible"),
+        "uncategorised": sum(1 for r in imported if r["categorization_method"] == "none"),
+        "from_your_rules": sum(1 for r in imported if r["categorization_method"] == "user_rule"),
+        "unknown_merchant": sum(1 for r in imported if r["normalized_merchant"] == "Unknown"),
+        "needs_review": sum(1 for r in imported if r["review_status"] == "needs_review"),
         "balance_mismatch_rows": len(balance.mismatch_rows),
         "rows_without_balance": sum(1 for r in rows if r["balance_paise"] is None),
     }
@@ -167,7 +170,7 @@ def import_report(preview, include_exact_duplicates: bool = False) -> dict:
             "validity_pct": pct(accepted, complete),
             "uniqueness_pct": pct(accepted - exact, accepted),
             "balance_consistency_pct": pct(balance.checked_pairs - balance.mismatches, balance.checked_pairs),
-            "categorisation_coverage_pct": pct(accepted - flags["uncategorised"], accepted),
+            "categorisation_coverage_pct": pct(len(imported) - flags["uncategorised"], len(imported)),
         },
         "warnings": list(preview.warnings),
     }
@@ -200,6 +203,17 @@ def _issue_list(report: dict) -> list[dict]:
 
 
 # ---------------------------------------------------------------- scorecard
+
+def _categorisation_note(methods: dict[str, int]) -> str | None:
+    parts = []
+    if methods.get("user_rule"):
+        parts.append(f"{plural(methods['user_rule'], 'row')} categorised from your rules")
+    if methods.get("manual"):
+        parts.append(f"{plural(methods['manual'], 'row')} fixed by hand")
+    if methods.get("ai"):
+        parts.append(f"{methods['ai']} AI-suggested (still to verify)")
+    return (" · ".join(parts) + ".") if parts else None
+
 
 def _metric(key, label, numerator, denominator, definition, *, note=None, higher_is_better=True):
     return {"key": key, "label": label, "numerator": numerator, "denominator": denominator,
@@ -259,9 +273,9 @@ def scorecard(conn: sqlite3.Connection, statement_id: int | None = None) -> dict
                 "Consecutive row pairs where previous balance ± amount = printed balance ÷ pairs that could be checked.",
                 note=None if pairs else "No statement had a running-balance column, so this couldn't be measured."),
         _metric("categorisation", "Categorisation coverage", int(row["categorised"] or 0), n,
-                "Saved transactions with a category from a rule, merchant match, AI suggestion or manual edit ÷ "
-                "saved transactions. Reflects your corrections since import.",
-                note=f"{methods.get('ai', 0)} AI-suggested (still to verify)." if methods.get("ai") else None),
+                "Saved transactions with a category from a built-in rule, merchant match, one of your own rules, "
+                "an AI suggestion or a manual edit ÷ saved transactions. Reflects your corrections since import.",
+                note=_categorisation_note(methods)),
         _metric("reconciliation", "Statement reconciliation", reconciled, len(rec_available),
                 "Statements where printed opening balance + credits − debits = printed closing balance ÷ statements "
                 "that print both balances.",

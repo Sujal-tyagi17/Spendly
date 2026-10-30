@@ -272,7 +272,7 @@ export type ImportPreview = {
   token: string;
   parser: { name: string; label: string };
   period: { start: string | null; end: string | null };
-  counts: { extracted: number; valid: number; invalid: number; exact_duplicates: number; possible_duplicates: number; uncategorized: number; to_import: number };
+  counts: { extracted: number; valid: number; invalid: number; exact_duplicates: number; possible_duplicates: number; uncategorized: number; from_your_rules?: number; to_import: number };
   balance_check: { checked_pairs: number; mismatches: number };
   report: ImportReport;
   warnings: string[];
@@ -419,4 +419,15 @@ export type BudgetDrivers = {
   merchants: { merchant: string; transaction_count: number; expenditure_paise: number; share_pct: number }[];
   change: { merchant: string; current_paise: number; previous_paise: number; change_paise: number; change_pct: number | null }[];
   largest: { id: number; transaction_date: string; merchant?: string; normalized_merchant?: string; amount_paise: number }[];
+};
+
+/** A category rule learned from one of your own fixes (GET /api/rules). */
+export type MerchantRule = {
+  id: number;
+  merchant: string;
+  direction: "debit" | "credit";
+  category: string;
+  transaction_type: string;
+  updated_at: string;
+  transactions: number;
 };

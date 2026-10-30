@@ -133,7 +133,7 @@ export default function OverviewPage() {
           note="salary, stipend, interest"
           tip={<>Credits recognised as income. Money from friends is <b>not</b> counted as income until you re-categorise it.</>} />
         <MetricCard label="Net cash flow" value={<AnimatedNumber value={x.net_cash_flow_paise} format={(n) => inr(n, { sign: true })} />}
-          note="all money in − all money out"
+          note="money in − money out, excl. own transfers"
           tip={<>Every credit minus every debit, <b>excluding</b> transfers between your own accounts.</>} />
         <MetricCard label="Average month" value={x.average_monthly_expenditure.value_paise === null ? "n/a" : inr(x.average_monthly_expenditure.value_paise)}
           note={x.average_monthly_expenditure.months ? `expenditure, ${x.average_monthly_expenditure.months} complete month${x.average_monthly_expenditure.months === 1 ? "" : "s"}` : "no complete month in view"}

@@ -37,7 +37,7 @@ class Categorization:
     merchant_method: str
     transaction_type: str
     category: str
-    method: str  # "rule" | "merchant" | "ai" | "manual" | "none"
+    method: str  # "rule" | "merchant" | "ai" | "manual" | "none" ("user_rule" is set by the pipeline)
     rule_name: str | None
     needs_review: bool
     review_reason: str | None

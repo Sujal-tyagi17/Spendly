@@ -10,10 +10,10 @@ import { Button, buttonClass } from "@/components/ui/button";
 import { Card, SectionHeader } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { UploadDropzone } from "@/components/ui/upload-dropzone";
-import { ApiError, apiSend, apiUpload, downloadFile } from "@/lib/api";
+import { ApiError, apiSend, apiUpload, downloadFile, useApi } from "@/lib/api";
 import { fmtDate, inr, plural, TYPE_LABELS } from "@/lib/format";
 import { useApp } from "@/lib/store";
-import type { CommitResult, ImportPreview, ImportReport, PreviewRow } from "@/lib/types";
+import type { CommitResult, ImportPreview, ImportReport, MerchantRule, PreviewRow } from "@/lib/types";
 
 const STEPS = ["Choose PDF", "Read & check", "Review preview", "Import"] as const;
 
@@ -235,7 +235,8 @@ function ImportFlow() {
               ["Ready to import", preview.counts.to_import, "after skipping exact duplicates"],
               ["Exact duplicates", preview.counts.exact_duplicates, "will be skipped"],
               ["Possible duplicates", preview.counts.possible_duplicates, "imported & flagged"],
-              ["Uncategorized", preview.counts.uncategorized, "fix later in Transactions"],
+              ["Uncategorized", preview.counts.uncategorized,
+                preview.counts.from_your_rules ? `${plural(preview.counts.from_your_rules, "row")} sorted by your rules` : "fix later in Transactions"],
             ].map(([k, v, n]) => (
               <div key={k as string} className="rounded-xl border border-line bg-ink-2/70 p-3.5">
                 <p className="eyebrow text-[0.58rem]">{k}</p><p className="tabular mt-1 text-xl font-semibold">{v}</p><p className="mt-0.5 text-[0.7rem] text-faint">{n}</p>
@@ -284,7 +285,8 @@ function ImportFlow() {
                     <td className={`tabular px-3 py-2 text-right whitespace-nowrap ${r.direction === "credit" ? "text-pos" : "text-fg"}`}>
                       {inr(r.direction === "credit" ? r.amount_paise : -r.amount_paise, { sign: true, decimals: true })}</td>
                     <td className="px-3 py-2 whitespace-nowrap text-muted">{TYPE_LABELS[r.type] ?? r.type}</td>
-                    <td className="px-3 py-2 whitespace-nowrap text-fg/85">{r.category}{r.method === "ai" ? <span className="ml-1 text-[0.68rem] text-lime">AI</span> : null}</td>
+                    <td className="px-3 py-2 whitespace-nowrap text-fg/85">{r.category}{r.method === "ai" ? <span className="ml-1 text-[0.68rem] text-lime">AI</span>
+                      : r.method === "user_rule" ? <span className="ml-1 text-[0.68rem] text-lime" title="Categorised by a rule learned from your own fix">your rule</span> : null}</td>
                     <td className="px-3 py-2 text-[0.74rem]">{warn ? <span className="flex items-start gap-1.5 text-warn"><AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />{warn}</span> : <span className="text-faint">—</span>}</td>
                   </tr>
                 );
@@ -366,6 +368,7 @@ function Settings() {
           wasn&apos;t calculated by Spendly is rejected.
         </p>
       </Card>
+      <CategoryRules />
       <Card className="p-5 sm:p-6">
         <SectionHeader title="Export" />
         <p className="mt-3 text-[0.84rem] text-muted">Download every transaction in the current data source as CSV (amounts in rupees, identifiers masked).</p>
@@ -376,7 +379,7 @@ function Settings() {
       <Card className="border-err/25 p-5 sm:p-6">
         <SectionHeader title="Delete my data" />
         <p className="mt-3 text-[0.84rem] text-muted">
-          {mode === "user" ? "Permanently removes every imported statement, transaction, correction and decision from My data. The demo isn't affected."
+          {mode === "user" ? "Permanently removes every imported statement, transaction, correction, category rule and decision from My data. The demo isn't affected."
             : "Switch to My data to delete your imported data. Demo data can only be reset."}
         </p>
         <Button className="mt-4" variant="danger" disabled={mode !== "user" || !meta?.counts.statements} onClick={() => setOpen(true)}>
@@ -392,6 +395,65 @@ function Settings() {
         </label>
       </ConfirmDialog>
     </div>
+  );
+}
+
+/** Rules learned from your own category fixes; future imports use them automatically. */
+function CategoryRules() {
+  const { mode, version, ready, refresh, notify } = useApp();
+  const { data } = useApi<{ rules: MerchantRule[] }>(ready ? "/api/rules" : null, [mode, version]);
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const rules = data?.rules ?? [];
+  const forget = async (rule: MerchantRule) => {
+    setBusyId(rule.id);
+    try {
+      await apiSend(`/api/rules/${rule.id}`, "DELETE");
+      notify(`Rule for ${rule.merchant} removed. Existing transactions keep their category.`);
+      refresh();
+    } catch (e) {
+      notify(e instanceof ApiError ? e.message : "Couldn't remove the rule.", "error");
+    } finally {
+      setBusyId(null);
+    }
+  };
+  return (
+    <Card className="p-5 sm:p-6 lg:col-span-2">
+      <SectionHeader title="Your category rules"
+        subtitle="When you change a merchant's category, Spendly remembers it and uses it for that merchant in future imports. Built-in rules for salary, own transfers and card bills always come first." />
+      {rules.length === 0 ? (
+        <p className="mt-4 text-[0.84rem] text-muted">No rules yet. Fix a category on the Transactions page and it will appear here.</p>
+      ) : (
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full text-left text-[0.84rem]">
+            <caption className="sr-only">Category rules learned from your fixes</caption>
+            <thead><tr className="border-b border-line text-[0.72rem] text-muted">
+              <th scope="col" className="py-2 pr-3 font-medium">Merchant</th>
+              <th scope="col" className="px-3 py-2 font-medium">Applies to</th>
+              <th scope="col" className="px-3 py-2 font-medium">Category</th>
+              <th scope="col" className="px-3 py-2 font-medium">Type</th>
+              <th scope="col" className="px-3 py-2 text-right font-medium">Saved rows</th>
+              <th scope="col" className="py-2 pl-3"><span className="sr-only">Actions</span></th>
+            </tr></thead>
+            <tbody>
+              {rules.map((rule) => (
+                <tr key={rule.id} className="border-b border-line/50 last:border-0">
+                  <td className="py-2 pr-3 text-fg">{rule.merchant}</td>
+                  <td className="px-3 py-2 text-muted">{rule.direction === "credit" ? "money in" : "money out"}</td>
+                  <td className="px-3 py-2 text-fg/85">{rule.category}</td>
+                  <td className="px-3 py-2 text-muted">{TYPE_LABELS[rule.transaction_type] ?? rule.transaction_type}</td>
+                  <td className="tabular px-3 py-2 text-right text-muted">{rule.transactions.toLocaleString("en-IN")}</td>
+                  <td className="py-2 pl-3 text-right">
+                    <Button variant="ghost" size="sm" loading={busyId === rule.id} onClick={() => forget(rule)} aria-label={`Forget the rule for ${rule.merchant}`}>
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />Forget
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
   );
 }
 
