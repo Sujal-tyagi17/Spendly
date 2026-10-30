@@ -1,4 +1,4 @@
-# ₹ Spendly — *Every rupee tells a story.*
+# Spendly — *Your money has a story. It's time to read it.*
 
 Spendly turns raw Indian bank and UPI statement **PDFs** into clean, categorized transactions,
 a **SQL-driven analytics engine**, and an interactive dashboard that explains *where your money

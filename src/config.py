@@ -18,7 +18,7 @@ RULES_PATH = Path(os.getenv("SPENDLY_RULES_PATH", PROJECT_ROOT / "config" / "rul
 SAMPLE_CSV_PATH = PROJECT_ROOT / "data" / "sample_transactions.csv"
 
 APP_NAME = "Spendly"
-TAGLINE = "Every rupee tells a story."
+TAGLINE = "Your money has a story. It's time to read it."
 
 
 def _env_bool(name: str, default: bool = False) -> bool:

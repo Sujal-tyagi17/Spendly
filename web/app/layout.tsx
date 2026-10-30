@@ -6,7 +6,7 @@ import { MotionProvider } from "@/components/motion-provider";
 import { site } from "@/lib/site";
 import "./globals.css";
 
-const title = "Spendly — Personal finance intelligence for your bank statements";
+const title = `Spendly — ${site.tagline}`;
 
 export const metadata: Metadata = {
   metadataBase: new URL(site.siteUrl),

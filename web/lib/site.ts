@@ -23,7 +23,7 @@ function normalizeUrl(value: string | undefined, fallback = FALLBACK_APP_URL): s
 
 export const site = {
   name: "Spendly",
-  tagline: "Every rupee tells a story.",
+  tagline: "Your money has a story. It's time to read it.",
   description:
     "Turn your bank and UPI statements into a clearer picture of your spending. Discover patterns, understand your habits, and make every rupee count.",
   appUrl: normalizeUrl(process.env.NEXT_PUBLIC_APP_URL),

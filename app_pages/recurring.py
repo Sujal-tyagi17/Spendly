@@ -48,11 +48,11 @@ for group, title in (({"confirmed", "high_confidence"}, "Detected"), ({"possible
             left, mid, right = st.columns([4, 2.2, 1.6])
             stopped = "  \n⚠ _No recent payment — may have been cancelled._" if c.possibly_stopped else ""
             left.markdown(f"**{c.merchant}** · {c.kind} · {c.category}  \n"
-                          f"<span style='color:#52514e;font-size:.88rem'>{c.rationale}</span>{stopped}",
+                          f"<span class='sp-muted' style='font-size:.88rem'>{c.rationale}</span>{stopped}",
                           unsafe_allow_html=True)
             mid.markdown(f"{STATUS[c.status]} · {c.schedule}  \n"
                          f"**{format_inr(c.est_monthly_paise)}/month** (est.)  \n"
-                         f"<span style='color:#52514e;font-size:.85rem'>{c.occurrences} payments · last "
+                         f"<span class='sp-muted' style='font-size:.85rem'>{c.occurrences} payments · last "
                          f"{c.last_payment} · next ≈ {c.next_expected}</span>", unsafe_allow_html=True)
             if c.status != "confirmed" and right.button("Confirm", key=f"c_{c.merchant}", width="stretch"):
                 database.set_recurring_decision(conn, c.merchant, "confirmed")

@@ -1,4 +1,4 @@
-"""Spendly — Every rupee tells a story.
+"""Spendly — Your money has a story. It's time to read it.
 
 Run with:  streamlit run app.py
 """

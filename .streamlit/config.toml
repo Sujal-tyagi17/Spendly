@@ -1,14 +1,60 @@
+# Same look as the Next.js app (web/app/globals.css): near-black greens, lime accent, Geist.
 [theme]
-base = "light"
-primaryColor = "#0f766e"
-backgroundColor = "#f7f7f5"
-secondaryBackgroundColor = "#efeeea"
-textColor = "#0b0b0b"
-font = "sans serif"
+base = "dark"
+primaryColor = "#c6ff5e"
+backgroundColor = "#080a08"
+secondaryBackgroundColor = "#111511"
+textColor = "#f5f7f2"
+borderColor = "#1e261e"
+linkColor = "#c6ff5e"
+baseRadius = "0.75rem"
+font = "Geist"
+codeFont = "Geist Mono"
+showWidgetBorder = true
+# Alert and status colours from the web app (warn amber, pos green, neg red, info blue).
+yellowColor = "#e8b04b"
+yellowBackgroundColor = "#1d180c"
+greenColor = "#7fc98a"
+greenBackgroundColor = "#111c13"
+redColor = "#e06c5f"
+redBackgroundColor = "#1f1210"
+blueColor = "#8fb8de"
+blueBackgroundColor = "#101820"
+
+[[theme.fontFaces]]
+family = "Geist"
+url = "app/static/fonts/Geist-Regular.woff2"
+weight = 400
+
+[[theme.fontFaces]]
+family = "Geist"
+url = "app/static/fonts/Geist-Medium.woff2"
+weight = 500
+
+[[theme.fontFaces]]
+family = "Geist"
+url = "app/static/fonts/Geist-SemiBold.woff2"
+weight = 600
+
+[[theme.fontFaces]]
+family = "Geist"
+url = "app/static/fonts/Geist-Bold.woff2"
+weight = 700
+
+[[theme.fontFaces]]
+family = "Geist Mono"
+url = "app/static/fonts/GeistMono-Regular.woff2"
+weight = 400
+
+[theme.sidebar]
+backgroundColor = "#0d100d"
+secondaryBackgroundColor = "#111511"
+borderColor = "#1e261e"
 
 [server]
 maxUploadSize = 10
 headless = true
+enableStaticServing = true
 
 [browser]
 gatherUsageStats = false

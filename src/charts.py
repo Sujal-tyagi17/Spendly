@@ -8,7 +8,7 @@ Rules applied everywhere (from the project's data-viz guidelines):
 * rupee values formatted in Indian style (₹1.2L, ₹45K) on axes and hovers;
 * every chart handles empty data by returning None (the page shows an empty state).
 
-Palette: validated categorical slots (blue, orange) and a blue↔red diverging
+Palette: the web app's lime (spending) and soft blue (income), and a green↔red diverging
 pair — see README "Design".
 """
 
@@ -22,15 +22,19 @@ import plotly.graph_objects as go
 from src.text import plural
 from src.money import format_inr, format_inr_compact
 
-BLUE = "#2a78d6"
-ORANGE = "#eb6834"
-RED = "#e34948"
-INK = "#0b0b0b"
-INK_2 = "#52514e"
-INK_3 = "#8a8983"
-GRID = "#ebeae6"
-SURFACE = "#fcfcfb"
-FONT = "Inter, -apple-system, Segoe UI, Roboto, sans-serif"
+# Same palette as the web app's charts (web/components/app/charts.tsx, web/app/globals.css).
+# BLUE is the primary series (spending), ORANGE the secondary one (income); the names are kept
+# so every chart below picks up the theme without changes.
+BLUE = "#a8e65c"     # lime-2: expenditure / "spent less" bars
+ORANGE = "#8fb8de"   # soft blue: income
+RED = "#e06c5f"      # restrained red: spent more
+INK = "#f5f7f2"
+INK_2 = "#929a90"
+INK_3 = "#828a80"
+GRID = "#1e261e"
+SURFACE = "#111511"
+PREVIOUS = "#56604f"  # muted: the earlier period in comparisons (web C.prev)
+FONT = "Geist, ui-sans-serif, system-ui, sans-serif"
 
 
 def _nice_step(span: float, count: int = 5) -> float:
@@ -72,7 +76,7 @@ def _layout(fig: go.Figure, title: str, subtitle: str | None = None, height: int
         showlegend=legend,
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
                     font=dict(color=INK_2), bgcolor="rgba(0,0,0,0)"),
-        hoverlabel=dict(bgcolor="white", bordercolor=GRID, font=dict(family=FONT, color=INK, size=12)),
+        hoverlabel=dict(bgcolor="#151b14", bordercolor="#2a342a", font=dict(family=FONT, color=INK, size=12)),
         bargap=0.35,
     )
     fig.update_xaxes(showgrid=False, linecolor=GRID, tickfont=dict(color=INK_2), ticks="", zeroline=False)
@@ -181,7 +185,7 @@ def period_comparison(categories: pd.DataFrame, current_label: str, previous_lab
     data = categories.assign(total=categories["current_paise"] + categories["previous_paise"])
     data = data.sort_values("total", ascending=False).head(10)
     fig = go.Figure()
-    for column, name, color in (("previous_paise", previous_label, ORANGE), ("current_paise", current_label, BLUE)):
+    for column, name, color in (("previous_paise", previous_label, PREVIOUS), ("current_paise", current_label, BLUE)):
         fig.add_trace(go.Bar(
             x=data["category"], y=data[column] / 100, name=name, marker_color=color,
             customdata=[format_inr(v) for v in data[column]],
@@ -196,7 +200,7 @@ def period_comparison(categories: pd.DataFrame, current_label: str, previous_lab
 
 
 def change_bars(frame: pd.DataFrame, label_column: str, title: str, top_n: int = 8) -> go.Figure | None:
-    """Diverging bars for increases (red) / decreases (blue), zero baseline."""
+    """Diverging bars for increases (red) / decreases (green), zero baseline."""
     if frame.empty:
         return None
     data = frame[frame["change_paise"] != 0]
@@ -223,4 +227,4 @@ def change_bars(frame: pd.DataFrame, label_column: str, title: str, top_n: int =
     axis["range"] = [axis["range"][0] - (pad if low < 0 else 0), axis["range"][1] + (pad if high > 0 else 0)]
     fig.update_xaxes(**axis, showgrid=True, gridcolor=GRID, zeroline=True, zerolinecolor=INK_3, zerolinewidth=1)
     height = max(220, 70 + 34 * len(values))
-    return _layout(fig, title, "Red = spent more, blue = spent less", height=height)
+    return _layout(fig, title, "Red = spent more, green = spent less", height=height)

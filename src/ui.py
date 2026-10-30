@@ -17,40 +17,47 @@ MODE_LABELS = {"demo": "Demo data", "user": "My data"}
 
 CSS = """
 <style>
-:root { --sp-ink:#0b0b0b; --sp-ink2:#52514e; --sp-ink3:#8a8983; --sp-line:#ebeae6;
-        --sp-card:#ffffff; --sp-brand:#0f766e; --sp-brand-soft:#e6f2f0; }
+/* Same tokens as the web app (web/app/globals.css). */
+:root { --sp-ink:#f5f7f2; --sp-ink2:#929a90; --sp-ink3:#828a80; --sp-line:#1e261e; --sp-line2:#2a342a;
+        --sp-card:#111511; --sp-card2:#151b14; --sp-brand:#c6ff5e; --sp-brand-soft:rgba(198,255,94,.10);
+        --sp-pos:#7fc98a; --sp-neg:#e06c5f; --sp-warn:#e8b04b; --sp-info:#8fb8de; }
 .block-container { padding-top: 2.2rem; max-width: 1240px; }
-h1, h2, h3 { letter-spacing: -0.01em; }
+h1, h2, h3 { letter-spacing: -0.02em; }
 .sp-hero { display:flex; align-items:baseline; gap:.75rem; margin-bottom:.15rem; }
-.sp-hero h1 { margin:0; font-size:1.9rem; font-weight:700; color:var(--sp-ink); }
+.sp-hero h1 { margin:0; font-size:1.9rem; font-weight:600; color:var(--sp-ink); letter-spacing:-0.03em; }
 .sp-sub { color:var(--sp-ink2); margin:0 0 1.1rem 0; font-size:.98rem; }
 .sp-badge { display:inline-block; padding:.18rem .6rem; border-radius:999px; font-size:.75rem;
             font-weight:600; letter-spacing:.02em; }
-.sp-badge.demo { background:#fff4e0; color:#8a5300; border:1px solid #f3d8a7; }
-.sp-badge.user { background:var(--sp-brand-soft); color:var(--sp-brand); border:1px solid #bfdcd7; }
-.sp-card { background:var(--sp-card); border:1px solid var(--sp-line); border-radius:14px;
-           padding:1rem 1.1rem .9rem; height:100%; box-shadow:0 1px 2px rgba(16,24,40,.04); }
-.sp-card .label { color:var(--sp-ink2); font-size:.8rem; font-weight:600; text-transform:uppercase;
-                  letter-spacing:.04em; }
-.sp-card .value { color:var(--sp-ink); font-size:1.6rem; font-weight:700; margin:.2rem 0 .1rem;
-                  font-variant-numeric: tabular-nums; }
-.sp-card .note { color:var(--sp-ink3); font-size:.8rem; }
-.sp-card .delta-up { color:#b42318; font-weight:600; }
-.sp-card .delta-down { color:#067647; font-weight:600; }
-.sp-insight { border-left:3px solid var(--sp-line); padding:.45rem .8rem; margin:.35rem 0;
-              background:#fff; border-radius:0 10px 10px 0; }
+.sp-badge.demo { background:rgba(232,176,75,.10); color:var(--sp-warn); border:1px solid rgba(232,176,75,.35); }
+.sp-badge.user { background:var(--sp-brand-soft); color:var(--sp-brand); border:1px solid rgba(198,255,94,.35); }
+.sp-card { background:var(--sp-card); border:1px solid var(--sp-line); border-radius:16px;
+           padding:1rem 1.1rem .9rem; height:100%; }
+.sp-card .label { color:var(--sp-ink3); font-size:.7rem; font-weight:500; text-transform:uppercase;
+                  letter-spacing:.14em; font-family:"Geist Mono", ui-monospace, monospace; }
+.sp-card .value { color:var(--sp-ink); font-size:1.6rem; font-weight:600; margin:.25rem 0 .1rem;
+                  font-variant-numeric: tabular-nums; letter-spacing:-0.02em; }
+.sp-card .note { color:var(--sp-ink2); font-size:.8rem; }
+.sp-card .delta-up { color:var(--sp-neg); font-weight:600; }
+.sp-card .delta-down { color:var(--sp-pos); font-weight:600; }
+.sp-insight { border-left:3px solid var(--sp-line2); padding:.5rem .85rem; margin:.4rem 0;
+              background:var(--sp-card); border-radius:0 12px 12px 0; }
 .sp-insight .t { font-weight:600; color:var(--sp-ink); font-size:.88rem; }
 .sp-insight .b { color:var(--sp-ink2); font-size:.9rem; }
-.sp-insight.up { border-left-color:#e34948; } .sp-insight.down { border-left-color:#2a78d6; }
-.sp-insight.warning { border-left-color:#fab219; } .sp-insight.good { border-left-color:#0ca30c; }
-.sp-empty { border:1px dashed #d6d4cd; border-radius:14px; padding:1.6rem; text-align:center;
-            color:var(--sp-ink2); background:#fcfcfb; }
+.sp-insight.up { border-left-color:var(--sp-neg); } .sp-insight.down { border-left-color:var(--sp-pos); }
+.sp-insight.warning { border-left-color:var(--sp-warn); } .sp-insight.good { border-left-color:var(--sp-brand); }
+.sp-empty { border:1px dashed var(--sp-line2); border-radius:16px; padding:1.6rem; text-align:center;
+            color:var(--sp-ink2); background:var(--sp-card); }
 .sp-empty b { color:var(--sp-ink); }
-.sp-chart { background:#fff; border:1px solid var(--sp-line); border-radius:14px; padding:.6rem .8rem .2rem; }
-div[data-testid="stSidebar"] .sp-brandline { display:flex; align-items:center; gap:0.6rem; font-weight:700; font-size:1.25rem; color:var(--sp-ink); }
-div[data-testid="stSidebar"] .sp-tag { color:var(--sp-ink2); font-size:.85rem; margin-top:-.2rem; }
+.sp-chart { background:var(--sp-card); border:1px solid var(--sp-line); border-radius:16px; padding:.6rem .8rem .2rem; }
+.sp-muted { color:var(--sp-ink2); }
+div[data-testid="stSidebar"] .sp-brandline { display:flex; align-items:center; gap:0.6rem; font-weight:600; font-size:1.2rem; color:var(--sp-ink); }
+div[data-testid="stSidebar"] .sp-tag { color:var(--sp-ink2); font-size:.85rem; margin-top:.35rem; line-height:1.4; }
+/* Primary buttons: lime with dark text, like the web app. */
+button[data-testid="stBaseButton-primary"] { color:#080a08 !important; font-weight:600; }
+button[data-testid="stBaseButton-primary"] * { color:#080a08 !important; }
 </style>
 """
+
 
 
 def inject_css() -> None:
@@ -131,7 +138,7 @@ _LOGO_MARK = (
 def sidebar(conn: sqlite3.Connection) -> None:
     with st.sidebar:
         st.markdown(f"<div class='sp-brandline' style='display:flex;align-items:center;gap:0.6rem'>{_LOGO_MARK}<span style='font-weight:700'>{config.APP_NAME}</span></div>"
-                    f"<div class='sp-tag'>{config.TAGLINE}</div>", unsafe_allow_html=True)
+                    f"<div class='sp-tag' style='color:#929a90;font-size:.85rem;line-height:1.45;margin-top:.4rem'>{config.TAGLINE}</div>", unsafe_allow_html=True)
         st.write("")
         mode = st.radio("Data source", list(MODE_LABELS), format_func=MODE_LABELS.get,
                         index=list(MODE_LABELS).index(current_mode()), horizontal=True,
