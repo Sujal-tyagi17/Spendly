@@ -6,6 +6,7 @@ import { EditTransactionDialog } from "@/components/app/edit-transaction";
 import { NoDataState } from "@/components/app/no-data";
 import { CategoryBadge, StatusBadge, TypeBadge } from "@/components/ui/badges";
 import { Button } from "@/components/ui/button";
+import { InfoTip } from "@/components/ui/info-tip";
 import { EmptyState, ErrorState, LoadingState } from "@/components/ui/states";
 import { downloadFile, EMPTY_FILTERS, filtersToQuery, useApi } from "@/lib/api";
 import { fmtDate, inr } from "@/lib/format";
@@ -127,10 +128,15 @@ export default function TransactionsPage() {
       </div>
 
       {data ? (
-        <p className="text-[0.8rem] text-muted" aria-live="polite">
-          <span className="tabular text-fg">{data.total.toLocaleString("en-IN")}</span> transaction{data.total === 1 ? "" : "s"} · money out{" "}
-          <span className="tabular text-fg">{inr(data.summary.debits_paise)}</span> · money in{" "}
-          <span className="tabular text-pos">{inr(data.summary.credits_paise)}</span>
+        <p className="flex flex-wrap items-center gap-x-1 text-[0.8rem] text-muted" aria-live="polite">
+          <span><span className="tabular text-fg">{data.total.toLocaleString("en-IN")}</span> transaction{data.total === 1 ? "" : "s"} · all debits{" "}
+          <span className="tabular text-fg">{inr(data.summary.debits_paise)}</span> · all credits{" "}
+          <span className="tabular text-pos">{inr(data.summary.credits_paise)}</span></span>
+          <InfoTip label="all debits and all credits">
+            These add up every row shown, exactly as the statement lists them. Expenditure and Income on the other pages
+            are narrower: transfers between your own accounts are left out, credit-card bill payments aren&apos;t counted as
+            spending (the card purchases are), and refunds aren&apos;t income.
+          </InfoTip>
           {data.summary.needs_review ? <> · <span className="text-warn">{data.summary.needs_review} need review</span></> : null}
           {loading ? <span className="ml-2 text-faint">Updating…</span> : null}
         </p>
