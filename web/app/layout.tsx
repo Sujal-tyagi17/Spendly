@@ -31,7 +31,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en-IN" className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}>
+    <html lang="en-IN" data-scroll-behavior="smooth" className={`${GeistSans.variable} ${GeistMono.variable} antialiased`}>
       <body className="grain min-h-dvh bg-ink text-fg">
         <SkipLink />
         <MotionProvider>{children}</MotionProvider>
