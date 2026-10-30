@@ -7,7 +7,11 @@ how far the numbers can be trusted.
 
 <img src="docs/screenshots/web-overview.jpg" alt="Spendly Overview dashboard on synthetic demo data: expenditure, income, net cash flow, month-over-month change, a monthly spending chart and a breakdown of why spending changed" width="100%">
 
-<p align="center"><sub>Overview dashboard on the built-in synthetic demo data (Apr–Sep 2026). No real financial data appears in this repository. There is no hosted demo; it runs locally (see <a href="#run-locally">Run locally</a>).</sub></p>
+<p align="center"><sub>The Next.js dashboard on the built-in synthetic demo data (Apr–Sep 2026). No real financial data appears in this repository.</sub></p>
+
+**Live demo:** [spendly-insights.streamlit.app](https://spendly-insights.streamlit.app/) runs the Streamlit version on the same
+synthetic data and the same Python/SQL engine. It may take a minute to wake up. The full Next.js dashboard shown above,
+including Budget Planner and SQL Analysis, runs locally ([Run locally](#run-locally)).
 
 ## Key highlights
 
@@ -73,8 +77,8 @@ flowchart LR
     E --> G["Streamlit app"]
 ```
 
-All calculations happen in the Python and SQL core (`src/`, `sql/`). The Next.js dashboard is the main interface
-and the one to try first; the Streamlit app is a lighter view of the same engine with the same numbers.
+All calculations happen in the Python and SQL core (`src/`, `sql/`). The Next.js dashboard is the most complete
+interface; the Streamlit app is a lighter view of the same engine with the same numbers, and it is the hosted demo.
 
 ## Tech stack
 
@@ -134,7 +138,8 @@ matched every checked figure to the source data and led to 20 fixes. Details are
 - Scanned or photographed PDFs are not supported (no OCR); they are rejected with a message.
 - All testing used synthetic statements, so accuracy on real statements is unmeasured.
 - It is a single-user local app with no accounts. Imported transactions are stored in an unencrypted SQLite file
-  (PDFs are never saved). A public deployment would keep each visitor's data in memory for their session only.
+  (PDFs are never saved). The hosted demo keeps each visitor's data in memory for their session only; use synthetic
+  statements there, never real ones.
 - Recurring payments need at least three payments to be detected; unusual-payment detection was evaluated on
   synthetic labels only.
 - Optional Gemini features (off by default) can suggest categories for unknown merchants and summarise insights.
