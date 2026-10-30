@@ -78,8 +78,7 @@ export default function InsightsPage() {
           </Card>
         ) : (
           <EmptyState title="Not enough history to compare">
-            A month-over-month comparison needs the previous month to be covered by your statements. Import an older
-            statement, or widen the date range.
+            {data.story.caveats[0] ?? "A month-over-month comparison needs the previous month to be covered by your statements. Import an older statement, or widen the date range."}
           </EmptyState>
         )}
       </section>

@@ -23,7 +23,7 @@ const axisProps = {
   axisLine: false,
 } as const;
 
-type TipPayload = { name?: string; value?: number; color?: string; dataKey?: string | number };
+type TipPayload = { name?: string; value?: number | null; color?: string; dataKey?: string | number };
 
 function ChartTooltip({ active, payload, label, labelFormat }: {
   active?: boolean; payload?: TipPayload[]; label?: string; labelFormat?: (l: string) => string;
@@ -35,7 +35,7 @@ function ChartTooltip({ active, payload, label, labelFormat }: {
       {payload.map((p) => (
         <p key={String(p.dataKey)} className="flex items-center gap-2 text-muted">
           <span className="h-2 w-2 rounded-full" style={{ background: p.color }} aria-hidden="true" />
-          {p.name}: <span className="tabular text-fg">{inr((p.value ?? 0) * 100)}</span>
+          {p.name}: <span className="tabular text-fg">{p.value === null || p.value === undefined ? "no statement" : inr(p.value * 100)}</span>
         </p>
       ))}
     </div>
@@ -85,11 +85,18 @@ export function ChartContainer({ title, subtitle, table, children, height = 280,
   );
 }
 
-export type MonthRow = { month_start: string; expenditure_paise: number; income_paise: number };
+export type MonthRow = { month_start: string; expenditure_paise: number; income_paise: number; is_covered?: number | boolean };
+
+/** Rows from the API say whether a statement covers the month; older payloads without the flag count as covered. */
+function covered(d: { is_covered?: number | boolean }): boolean {
+  return d.is_covered === undefined || Boolean(d.is_covered);
+}
 
 export function TrendChart({ data, onSelectMonth }: { data: MonthRow[]; onSelectMonth?: (monthStart: string) => void }) {
   const reduced = useReducedMotion();
-  const rows = data.map((d) => ({ month: d.month_start, Expenditure: d.expenditure_paise / 100, Income: d.income_paise / 100 }));
+  // A month no statement covers is missing data, not ₹0: leave a gap instead of drawing a dip to zero.
+  const rows = data.map((d) => ({ month: d.month_start, Expenditure: covered(d) ? d.expenditure_paise / 100 : null,
+    Income: covered(d) ? d.income_paise / 100 : null }));
   return (
     <ResponsiveContainer width="100%" height="100%">
       <ComposedChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
@@ -111,7 +118,7 @@ export function TrendChart({ data, onSelectMonth }: { data: MonthRow[]; onSelect
           dot={{ r: 3, fill: C.lime2, strokeWidth: 0 }} activeDot={{ r: 5, stroke: "#0d100d", strokeWidth: 2 }}
           isAnimationActive={!reduced} animationDuration={900} />
         <Line type="monotone" dataKey="Income" stroke={C.income} strokeWidth={1.5} strokeDasharray="5 4"
-          dot={false} isAnimationActive={!reduced} animationDuration={900} />
+          dot={{ r: 2.5, fill: C.income, strokeWidth: 0 }} isAnimationActive={!reduced} animationDuration={900} />
       </ComposedChart>
     </ResponsiveContainer>
   );
@@ -198,9 +205,10 @@ export function RankedBars({ items, onSelect }: {
 }
 
 /** Income vs expenditure per month (two series, one ₹ axis). */
-export function CashFlowChart({ data }: { data: { month_start: string; income_paise: number; expenditure_paise: number }[] }) {
+export function CashFlowChart({ data }: { data: { month_start: string; income_paise: number; expenditure_paise: number; is_covered?: number | boolean }[] }) {
   const reduced = useReducedMotion();
-  const rows = data.map((d) => ({ month: d.month_start, Income: d.income_paise / 100, Expenditure: d.expenditure_paise / 100 }));
+  const rows = data.map((d) => ({ month: d.month_start, Income: covered(d) ? d.income_paise / 100 : null,
+    Expenditure: covered(d) ? d.expenditure_paise / 100 : null }));
   return (
     <ResponsiveContainer width="100%" height="100%">
       <BarChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} barGap={3}>

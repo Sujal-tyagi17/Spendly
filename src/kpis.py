@@ -142,8 +142,11 @@ def explain_change(conn, filters: Filters | None = None, candidates=None) -> dic
     filters = filters or Filters()
     comp = insights.compare_periods(conn, filters)
     if comp is None:
-        return {"available": False, "headline": None, "points": [],
-                "caveats": ["There's no earlier month inside your imported statements to compare with."], "facts": {}}
+        gap = insights.uncovered_previous_month(conn, filters)
+        caveat = (f"No imported statement covers {gap}, so there's nothing to compare the latest month with. "
+                  f"Import that month's statement to see what changed." if gap
+                  else "There's no earlier month inside your imported statements to compare with.")
+        return {"available": False, "headline": None, "points": [], "caveats": [caveat], "facts": {}}
 
     headline = insights.describe_change(comp)
     cur, prev = comp.current_paise, comp.previous_paise

@@ -95,9 +95,8 @@ def comparison_periods(analysis_end: date) -> tuple[tuple[date, date], tuple[dat
     return (cur_start, analysis_end), (prev_start, prev_end), is_partial
 
 
-def compare_periods(conn, filters: Filters | None = None) -> PeriodComparison | None:
-    """Latest month in view vs the previous one. None if there is not enough data."""
-    filters = filters or Filters()
+def _comparison_window(conn, filters: Filters):
+    """(current, previous, is_partial, coverage_start) for the latest month in view, or None."""
     data_start, data_end = analytics.date_bounds(conn)
     if data_end is None:
         return None
@@ -107,8 +106,41 @@ def compare_periods(conn, filters: Filters | None = None) -> PeriodComparison | 
 
     analysis_end = min(filters.end_date or coverage_end, coverage_end)
     current, previous, is_partial = comparison_periods(analysis_end)
+    return current, previous, is_partial, coverage_start
+
+
+def _has_statement(conn, period: tuple[date, date]) -> bool:
+    """Does any imported statement cover at least part of this period?"""
+    start, end = period
+    return conn.execute(
+        "SELECT 1 FROM statements WHERE statement_period_start <= ? AND statement_period_end >= ? LIMIT 1",
+        (end.isoformat(), start.isoformat())).fetchone() is not None
+
+
+def uncovered_previous_month(conn, filters: Filters | None = None) -> str | None:
+    """Name of the previous month when it falls in a gap between statements (e.g. "December 2026")."""
+    window = _comparison_window(conn, filters or Filters())
+    if window is None:
+        return None
+    _, previous, _, coverage_start = window
+    if previous[0] < coverage_start.replace(day=1) or previous[1] < coverage_start:
+        return None  # before the first statement: a different reason
+    return None if _has_statement(conn, previous) else previous[0].strftime("%B %Y")
+
+
+def compare_periods(conn, filters: Filters | None = None) -> PeriodComparison | None:
+    """Latest month in view vs the previous one. None if there is not enough data:
+    the previous month is before the first statement, or no statement covers it
+    (a gap between statements is missing data, never zero spending)."""
+    filters = filters or Filters()
+    window = _comparison_window(conn, filters)
+    if window is None:
+        return None
+    current, previous, is_partial, coverage_start = window
     if previous[0] < coverage_start.replace(day=1) or previous[1] < coverage_start:
         return None  # no previous period inside the uploaded statements
+    if not _has_statement(conn, previous):
+        return None  # the previous month falls in a gap between statements
 
     categories = analytics.period_change(conn, "category_change", filters, current, previous)
     merchants = analytics.period_change(conn, "merchant_change", filters, current, previous)

@@ -235,3 +235,24 @@ def test_rules_api_round_trip(client):
     assert client.delete(f"/api/rules/{rules[0]['id']}", headers=USER).json() == {"deleted": 1}
     assert client.delete(f"/api/rules/{rules[0]['id']}", headers=USER).status_code == 404
     assert client.get("/api/rules", headers=USER).json()["rules"] == []
+
+
+# ------------------------------------------- gaps between statements aren't zero
+
+def test_a_gap_between_statements_is_not_compared_as_zero(conn):
+    from src import insights, kpis
+    oct_rows = rows_to_csv([("2026-10-03", "UPI/DR/1/ZOMATO/YESB", "500.00", None)])
+    jan_rows = rows_to_csv([("2027-01-09", "UPI/DR/2/ZOMATO/YESB", "800.00", None)])
+    pipeline.commit_import(conn, pipeline.prepare_csv_rows_import(
+        oct_rows, display_name="oct", conn=conn, period=("2026-10-01", "2026-10-31")))
+    pipeline.commit_import(conn, pipeline.prepare_csv_rows_import(
+        jan_rows, display_name="jan", conn=conn, period=("2027-01-01", "2027-01-31")))
+
+    assert insights.compare_periods(conn) is None
+    assert insights.uncovered_previous_month(conn) == "December 2026"
+    story = kpis.explain_change(conn)
+    assert story["available"] is False
+    assert "No imported statement covers December 2026" in story["caveats"][0]
+    # No "biggest increase" cards built against a missing month.
+    keys = {i.key for i in insights.build_insights(conn, None, [], None)}
+    assert not keys & {"biggest_increase", "biggest_decrease", "overall_change"}
