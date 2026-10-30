@@ -137,3 +137,61 @@ All automated suites pass: 395 Python/API tests, 70 browser checks, Streamlit in
 journey matches hand-calculated values, and two P2 and six P3 defects were fixed with regression tests. No known
 release-blocking defect remains. Limitations: no authentication or rate limiting, synthetic-only parser evidence,
 a blocked live AI test, and no screen-reader or cross-browser testing.
+
+---
+
+## Update: manual testing and portfolio polish, 29–31 Oct 2026
+
+The sections above are the original 29 Oct record and are unchanged. This section adds the hands-on test that
+followed: six synthetic statements imported on a Windows laptop through the web app and Streamlit, plus a phone
+layout check. Every checked figure matched the source statements. Twenty defects were found and fixed, each in
+a commit on `main`.
+
+| # | Found during manual testing | Fixed in |
+|---|---|---|
+| 1 | "1 transactions" and similar plural wording | `8b19276`, `b35b95b` |
+| 2 | A finding with 0 rows still flagged kept its Warning badge | `8b19276` |
+| 3 | Cash-flow tiles didn't visibly add up (credit-card bill) | `b35b95b` |
+| 4 | Category fixes weren't reused on later imports (now rules per merchant and direction) | `4590c42` |
+| 5 | Overview net-cash-flow note didn't mention excluded own transfers | `4590c42` |
+| 6 | Uncategorised count included skipped exact duplicates | `4590c42` |
+| 7 | Balance-mismatch rows missing from Needs review | `4590c42` |
+| 8 | A month with no statement drawn as ₹0 and called "no expenditure" | `8868e67` |
+| 9 | Transactions header totals looked inconsistent with Overview | `6c2e21a` |
+| 10 | Badge 29% vs sentence 28% for the same 28.5% | `e8a379a` |
+| 11 | "+nan%" in the PDF report for a change from ₹0 | `ef03e49` |
+| 12 | Unusual payments compared with the "Other" catch-all category | `ef03e49` |
+| 13 | Landing page's second button scrolled instead of opening the user's data | `50170af`, `77bf4d0` |
+| 14 | Landing page wider than a phone screen; menu button off-screen | `14bfa31` |
+| 15 | Import & Settings 1 px too wide on phones | `14bfa31` |
+| 16 | Streamlit used the old logo | `7180515` |
+| 17 | Streamlit kept the demo's date range in My data | `7180515` |
+| 18 | Streamlit compared half-months where the web app compared full months | `7180515` |
+| 19 | Streamlit used a light theme | `3415e8a` |
+| 20 | Two different taglines | `3415e8a` |
+
+Portfolio polish (31 Oct): README rewritten and shortened (the full previous README is now
+[TECHNICAL_GUIDE.md](TECHNICAL_GUIDE.md)); [SQL_SHOWCASE.md](SQL_SHOWCASE.md) added; screenshots recaptured
+from the current app; monthly charts drawn with straight segments instead of smoothed curves; the "why spending
+changed" recurring line now says it is the amount actually paid (the KPI tile is an estimate); the default Gemini
+model changed from `gemini-2.5-flash` (Google now limits access for new users) to `gemini-3.6-flash`; 11 tests
+added for Gemini failure paths (timeouts, 429, rejected key, server error, malformed replies, what is sent).
+
+### Results, 31 Oct 2026
+
+| Check | Result |
+|---|---|
+| `pytest` (no Gemini key in the environment) | 456 passed, 0 failed |
+| `npm run lint` / `npx tsc --noEmit` / `npm run build` | clean / clean / compiled |
+| Browser E2E, web app + Streamlit (`python -m e2e.run_e2e --streamlit …`) | 69 passed, 0 failed |
+| Browser E2E, public-deployment journey (`--public`) | 7 passed, 0 failed |
+| Horizontal overflow at 393 / 375 / 320 px, 9 pages | none (checked 30 Oct) |
+| `pip-audit -r requirements-api.txt` / `npm audit --omit=dev` | 0 known vulnerabilities |
+| README links and images | all resolve to files in the repo |
+
+Not run: a live Gemini request (no key; covered by mocked tests), real bank statements (synthetic data only, by
+design), Safari and Firefox, screen readers.
+
+Verdict: **PASS WITH LIMITATIONS.** The limitations are unchanged: two supported statement layouts, no OCR,
+synthetic-only evidence, single-user local storage without encryption, and in-memory per-session data on a
+public deployment.

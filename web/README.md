@@ -102,7 +102,7 @@ they must only ever hold public URLs. Invalid values fall back to the defaults.
 
 ## Deploy
 
-1. Deploy the API first (see the root README → "Spendly 2.0: web app + API"), with
+1. Deploy the API first (see docs/TECHNICAL_GUIDE.md → "Spendly 2.0: web app + API"), with
    `SPENDLY_PUBLIC_DEPLOYMENT=true`.
 2. On Vercel, import the repo and set **Root Directory** to `web`. Add `SPENDLY_API_URL=https://your-api-host`
    and `NEXT_PUBLIC_SITE_URL=https://your-site`, then deploy.

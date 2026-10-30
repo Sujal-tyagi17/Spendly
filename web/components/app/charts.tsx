@@ -114,10 +114,10 @@ export function TrendChart({ data, onSelectMonth }: { data: MonthRow[]; onSelect
         <Tooltip content={<ChartTooltip labelFormat={monthLabel} />} cursor={{ stroke: "#2a342a" }} />
         <Legend verticalAlign="top" align="right" height={28} iconType="plainline"
           formatter={(v) => <span className="text-[0.75rem] text-muted">{v}</span>} />
-        <Area type="monotone" dataKey="Expenditure" stroke={C.lime2} strokeWidth={2} fill="url(#spendFill)"
+        <Area type="linear" dataKey="Expenditure" stroke={C.lime2} strokeWidth={2} fill="url(#spendFill)"
           dot={{ r: 3, fill: C.lime2, strokeWidth: 0 }} activeDot={{ r: 5, stroke: "#0d100d", strokeWidth: 2 }}
           isAnimationActive={!reduced} animationDuration={900} />
-        <Line type="monotone" dataKey="Income" stroke={C.income} strokeWidth={1.5} strokeDasharray="5 4"
+        <Line type="linear" dataKey="Income" stroke={C.income} strokeWidth={1.5} strokeDasharray="5 4"
           dot={{ r: 2.5, fill: C.income, strokeWidth: 0 }} isAnimationActive={!reduced} animationDuration={900} />
       </ComposedChart>
     </ResponsiveContainer>
@@ -242,7 +242,7 @@ export function CumulativeChart({ data }: { data: { month_start: string; cumulat
         <XAxis dataKey="month" tickFormatter={monthLabel} {...axisProps} dy={6} />
         <YAxis tickFormatter={(v) => inrCompact(v * 100)} width={56} {...axisProps} />
         <Tooltip content={<ChartTooltip labelFormat={monthLabel} />} cursor={{ stroke: "#2a342a" }} />
-        <Area type="monotone" dataKey="Running net cash flow" stroke={C.lime2} strokeWidth={2} fill="url(#cumFill)"
+        <Area type="linear" dataKey="Running net cash flow" stroke={C.lime2} strokeWidth={2} fill="url(#cumFill)"
           dot={{ r: 3, fill: C.lime2, strokeWidth: 0 }} isAnimationActive={!reduced} animationDuration={900} />
       </ComposedChart>
     </ResponsiveContainer>

@@ -217,9 +217,10 @@ def explain_change(conn, filters: Filters | None = None, candidates=None) -> dic
         r0 = _recurring_spend(conn, filters, comp.previous, active)
         facts.update({"recurring_current_paise": r1, "recurring_previous_paise": r0})
         if r1 == r0:
-            text = f"Recurring payments were unchanged ({format_inr(r1)}), so they didn't contribute."
+            text = (f"Actually paid to recurring merchants: {format_inr(r1)} in both months, "
+                    "so they didn't contribute.")
         else:
-            text = (f"Recurring payments went from {format_inr(r0)} to {format_inr(r1)} "
+            text = (f"Actually paid to recurring merchants went from {format_inr(r0)} to {format_inr(r1)} "
                     f"({_signed(r1 - r0)}), {abs(round(100 * (r1 - r0) / change))}% of the total change.")
         points.append({"key": "recurring", "title": "Recurring payments", "text": text, "items": []})
 

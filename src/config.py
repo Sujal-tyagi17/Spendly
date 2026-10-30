@@ -91,7 +91,7 @@ class AnomalySettings:
 class AISettings:
     enabled_flag: bool = _env_bool("SPENDLY_ENABLE_AI", False)
     api_key: str | None = os.getenv("GEMINI_API_KEY") or None
-    model: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    model: str = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
     timeout_seconds: int = _env_int("GEMINI_TIMEOUT_SECONDS", 20)
     max_merchants_per_request: int = 40
 
@@ -129,7 +129,7 @@ def ai_settings() -> AISettings:
     return AISettings(
         enabled_flag=_env_bool("SPENDLY_ENABLE_AI", False),
         api_key=os.getenv("GEMINI_API_KEY") or None,
-        model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+        model=os.getenv("GEMINI_MODEL", "gemini-3.6-flash"),
         timeout_seconds=_env_int("GEMINI_TIMEOUT_SECONDS", 20),
     )
 
