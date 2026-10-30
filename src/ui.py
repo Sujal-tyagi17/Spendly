@@ -47,7 +47,7 @@ h1, h2, h3 { letter-spacing: -0.01em; }
             color:var(--sp-ink2); background:#fcfcfb; }
 .sp-empty b { color:var(--sp-ink); }
 .sp-chart { background:#fff; border:1px solid var(--sp-line); border-radius:14px; padding:.6rem .8rem .2rem; }
-div[data-testid="stSidebar"] .sp-brandline { font-weight:700; font-size:1.25rem; color:var(--sp-ink); }
+div[data-testid="stSidebar"] .sp-brandline { display:flex; align-items:center; gap:0.6rem; font-weight:700; font-size:1.25rem; color:var(--sp-ink); }
 div[data-testid="stSidebar"] .sp-tag { color:var(--sp-ink2); font-size:.85rem; margin-top:-.2rem; }
 </style>
 """
@@ -104,14 +104,33 @@ def get_conn() -> sqlite3.Connection:
 
 # ----------------------------------------------------------------- filters
 
+_FILTER_KEYS = ("f_dates", "f_categories", "f_types", "f_merchants")
+
+
+def _fk(name: str) -> str:
+    """Widget key for a filter, per data source. Streamlit remembers a widget by its key, so a
+    shared key let the demo's date range follow you into My data (and vice versa)."""
+    return f"{name}_{current_mode()}"
+
+
 def _reset_filters() -> None:
-    for key in ("f_dates", "f_categories", "f_types", "f_merchants"):
-        st.session_state.pop(key, None)
+    for key in _FILTER_KEYS:
+        st.session_state.pop(_fk(key), None)
+
+
+# The same mark as the web app (web/components/logo.tsx), inline so it needs no extra request.
+_LOGO_MARK = (
+    "<svg viewBox='0 0 32 32' width='28' height='28' aria-hidden='true'>"
+    "<rect width='32' height='32' rx='9' fill='#111511' stroke='#2a342a'/>"
+    "<rect x='8' y='17' width='4' height='7' rx='1.5' fill='#c6ff5e' opacity='0.45'/>"
+    "<rect x='14' y='12' width='4' height='12' rx='1.5' fill='#c6ff5e' opacity='0.7'/>"
+    "<rect x='20' y='7' width='4' height='17' rx='1.5' fill='#c6ff5e'/></svg>"
+)
 
 
 def sidebar(conn: sqlite3.Connection) -> None:
     with st.sidebar:
-        st.markdown(f"<div class='sp-brandline'>₹ {config.APP_NAME}</div>"
+        st.markdown(f"<div class='sp-brandline' style='display:flex;align-items:center;gap:0.6rem'>{_LOGO_MARK}<span style='font-weight:700'>{config.APP_NAME}</span></div>"
                     f"<div class='sp-tag'>{config.TAGLINE}</div>", unsafe_allow_html=True)
         st.write("")
         mode = st.radio("Data source", list(MODE_LABELS), format_func=MODE_LABELS.get,
@@ -131,18 +150,19 @@ def sidebar(conn: sqlite3.Connection) -> None:
         if lo is None:
             st.caption("Filters appear once there is data.")
             return
-        st.date_input("Date range", value=(lo, hi), min_value=lo, max_value=hi, key="f_dates",
+        st.session_state["f_bounds"] = (lo, hi)
+        st.date_input("Date range", value=(lo, hi), min_value=lo, max_value=hi, key=_fk("f_dates"),
                       format="DD/MM/YYYY")
-        st.multiselect("Category", config.CATEGORIES, key="f_categories", placeholder="All categories")
-        st.multiselect("Transaction type", list(config.TRANSACTION_TYPES), key="f_types",
+        st.multiselect("Category", config.CATEGORIES, key=_fk("f_categories"), placeholder="All categories")
+        st.multiselect("Transaction type", list(config.TRANSACTION_TYPES), key=_fk("f_types"),
                        format_func=config.TRANSACTION_TYPES.get, placeholder="All types")
-        st.multiselect("Merchant", analytics.distinct_values(conn, "normalized_merchant"), key="f_merchants",
+        st.multiselect("Merchant", analytics.distinct_values(conn, "normalized_merchant"), key=_fk("f_merchants"),
                        placeholder="All merchants")
         st.button("Reset filters", on_click=_reset_filters, width="stretch")
 
 
 def current_filters(search: str = "") -> Filters:
-    dates = st.session_state.get("f_dates")
+    dates = st.session_state.get(_fk("f_dates"))
     start = end = None
     if isinstance(dates, (tuple, list)):
         if len(dates) >= 1:
@@ -151,11 +171,16 @@ def current_filters(search: str = "") -> Filters:
             end = dates[1]
     elif isinstance(dates, date):
         start = dates
+    # The untouched range (first to last transaction) means "all dates", exactly like the web
+    # app with no date filter. Passing it on would end the analysis at the last transaction
+    # (e.g. 16 Dec) and turn a full statement month into a "partial month" comparison.
+    if (start, end) == st.session_state.get("f_bounds"):
+        start = end = None
     return Filters(
         start_date=start, end_date=end,
-        categories=tuple(st.session_state.get("f_categories") or ()),
-        transaction_types=tuple(st.session_state.get("f_types") or ()),
-        merchants=tuple(st.session_state.get("f_merchants") or ()),
+        categories=tuple(st.session_state.get(_fk("f_categories")) or ()),
+        transaction_types=tuple(st.session_state.get(_fk("f_types")) or ()),
+        merchants=tuple(st.session_state.get(_fk("f_merchants")) or ()),
         search=search,
     )
 
