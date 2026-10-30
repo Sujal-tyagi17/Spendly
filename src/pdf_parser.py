@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 import pdfplumber
 
 from src import config
+from src.text import plural
 from src.privacy import get_logger
 from src.transaction_normalizer import DEFAULT_DATE_FORMATS, RawRow, parse_date, DateParseError
 
@@ -317,7 +318,7 @@ class BankTableParser(StatementParser):
                 ))
 
         if continuation_lines:
-            warnings.append(f"Joined {continuation_lines} wrapped description line(s) to the row above.")
+            warnings.append(f"Joined {plural(continuation_lines, 'wrapped description line')} to the row above.")
         start, end = find_period(document.full_text, self.date_formats)
         opening, closing = find_reported_balances(document.full_text)
         return ParseResult(self.name, self.label, rows, self.date_formats, start, end,

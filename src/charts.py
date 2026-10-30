@@ -19,6 +19,7 @@ import math
 import pandas as pd
 import plotly.graph_objects as go
 
+from src.text import plural
 from src.money import format_inr, format_inr_compact
 
 BLUE = "#2a78d6"
@@ -139,7 +140,7 @@ def horizontal_bars(labels, values_paise, title: str, subtitle: str | None = Non
 def category_bars(categories: pd.DataFrame) -> go.Figure | None:
     if categories.empty:
         return None
-    extra = [f"<br>{s:.1f}% of expenditure · {n} payments · avg {format_inr(a)}"
+    extra = [f"<br>{s:.1f}% of expenditure · {plural(n, 'payment')} · avg {format_inr(a)}"
              for s, n, a in zip(categories["share_pct"], categories["transaction_count"],
                                 categories["avg_transaction_paise"])]
     return horizontal_bars(categories["category"], categories["expenditure_paise"],
@@ -149,7 +150,7 @@ def category_bars(categories: pd.DataFrame) -> go.Figure | None:
 def merchant_bars(merchants: pd.DataFrame) -> go.Figure | None:
     if merchants.empty:
         return None
-    extra = [f"<br>{c} · {n} payments" for c, n in zip(merchants["category"], merchants["transaction_count"])]
+    extra = [f"<br>{c} · {plural(n, 'payment')}" for c, n in zip(merchants["category"], merchants["transaction_count"])]
     return horizontal_bars(merchants["merchant"], merchants["expenditure_paise"],
                            "Top merchants", "By total expenditure", extra)
 

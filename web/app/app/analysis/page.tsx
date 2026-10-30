@@ -11,6 +11,7 @@ import { MetricCard } from "@/components/ui/metric-card";
 import { EmptyState, ErrorState, Skeleton } from "@/components/ui/states";
 import { EMPTY_FILTERS } from "@/lib/api";
 import { fmtDate, inr, monthLabel, pct } from "@/lib/format";
+import type { Totals } from "@/lib/types";
 import { useFiltered, useOpenTransactions } from "@/lib/hooks";
 import { useApp } from "@/lib/store";
 import type { AnalysisMonth, AnalysisResponse } from "@/lib/types";
@@ -40,6 +41,21 @@ function Change({ paise, pctValue }: { paise: number | null; pctValue: number | 
 
 const th = "px-3 py-2.5 font-medium whitespace-nowrap";
 const td = "px-3 py-2.5 whitespace-nowrap";
+
+/** Shows how the four cash-flow tiles add up, so the net figure never looks unexplained. */
+function CashFlowBridge({ t }: { t: Totals }) {
+  const fromTiles = t.income_paise + t.refunds_paise - t.expenditure_paise;
+  if (fromTiles === t.net_cash_flow_paise) return null;
+  const other = t.net_cash_flow_paise - (fromTiles - t.cc_repayments_paise);
+  return (
+    <p className="tabular text-[0.8rem] leading-relaxed text-muted">
+      Net cash flow = income + refunds − expenditure
+      {t.cc_repayments_paise ? <> − <span className="text-fg/85">{inr(t.cc_repayments_paise)}</span> credit-card bill payments</> : null}
+      {other ? <> {other > 0 ? "+" : "−"} <span className="text-fg/85">{inr(Math.abs(other))}</span> other money {other > 0 ? "in" : "out"} (e.g. friends)</> : null}
+      . Card bills aren&apos;t counted as spending (the card purchases are), but the cash still left your account.
+    </p>
+  );
+}
 
 export default function AnalysisPage() {
   const { meta, setFilters } = useApp();
@@ -82,6 +98,7 @@ export default function AnalysisPage() {
           <MetricCard label="Refunds" value={inr(t.refunds_paise)} note="money returned" tip={data.definitions.is_refund} />
           <MetricCard emphasis label="Net cash flow" value={inr(t.net_cash_flow_paise, { sign: true })} note="credits − debits" tip={data.definitions.cash_flow_paise} />
         </div>
+        <CashFlowBridge t={t} />
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
           <ChartContainer title="Income and expenditure by month" height={280}
             table={{ columns: ["Month", "Income", "Expenditure", "Refunds", "Net cash flow"],

@@ -21,6 +21,7 @@ import sqlite3
 from dataclasses import dataclass
 
 from src import database
+from src.text import plural
 
 # ------------------------------------------------------------- issue catalogue
 
@@ -245,14 +246,15 @@ def scorecard(conn: sqlite3.Connection, statement_id: int | None = None) -> dict
         _metric("completeness", "Completeness", complete, extracted,
                 "Extracted rows with a date, an amount and a description ÷ all extracted rows.",
                 note=None if len(reports) == len(statements) else
-                f"{len(statements) - len(reports)} older import(s) have no stored report and are excluded."),
+                f"{plural(len(statements) - len(reports), 'older import')} without a stored report "
+                f"{'is' if len(statements) - len(reports) == 1 else 'are'} excluded."),
         _metric("validity", "Validity", accepted, complete,
                 "Complete rows that pass every field and business rule (readable unambiguous date, positive amount "
                 "with a clear direction, readable balance) ÷ complete rows."),
         _metric("uniqueness", "Uniqueness", accepted - exact, accepted,
                 "Accepted rows that are not exact duplicates ÷ accepted rows. Possible duplicates are reported "
                 "separately and are NOT counted as duplicates.",
-                note=f"{int(row['possible'] or 0)} possible duplicate(s) currently flagged for review."),
+                note=f"{plural(row['possible'] or 0, 'possible duplicate')} currently flagged for review."),
         _metric("consistency", "Running-balance consistency", pairs - mismatches, pairs,
                 "Consecutive row pairs where previous balance ± amount = printed balance ÷ pairs that could be checked.",
                 note=None if pairs else "No statement had a running-balance column, so this couldn't be measured."),

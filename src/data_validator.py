@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from src.text import plural
 from src.transaction_normalizer import NormalizedRecord
 
 
@@ -139,7 +140,7 @@ def summarize(records: list[NormalizedRecord]) -> QualitySummary:
     if not records:
         warnings.append("No transaction rows were found in this file.")
     if records and valid < len(records):
-        warnings.append(f"{len(records) - valid} row(s) could not be read and will not be imported.")
+        warnings.append(f"{plural(len(records) - valid, 'row')} could not be read and will not be imported.")
     if balance.available and balance.mismatches:
         warnings.append(
             f"Running balance did not add up on {balance.mismatches} of {balance.checked_pairs} "

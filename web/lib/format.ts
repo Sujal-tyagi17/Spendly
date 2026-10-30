@@ -53,3 +53,8 @@ export const TYPE_LABELS: Record<string, string> = {
   cc_repayment: "Card bill",
   other: "Other credit",
 };
+
+/** plural(1, "row") → "1 row"; plural(3, "row") → "3 rows". Uses Indian digit grouping. */
+export function plural(count: number, singular: string, pluralForm?: string): string {
+  return `${count.toLocaleString("en-IN")} ${count === 1 ? singular : (pluralForm ?? singular + "s")}`;
+}

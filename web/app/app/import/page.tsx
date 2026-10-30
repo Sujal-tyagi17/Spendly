@@ -11,7 +11,7 @@ import { Card, SectionHeader } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { UploadDropzone } from "@/components/ui/upload-dropzone";
 import { ApiError, apiSend, apiUpload, downloadFile } from "@/lib/api";
-import { fmtDate, inr, TYPE_LABELS } from "@/lib/format";
+import { fmtDate, inr, plural, TYPE_LABELS } from "@/lib/format";
 import { useApp } from "@/lib/store";
 import type { CommitResult, ImportPreview, ImportReport, PreviewRow } from "@/lib/types";
 
@@ -139,7 +139,7 @@ function ImportFlow() {
     try {
       const res = await apiSend<{ changed: number; preview: ImportPreview }>(`/api/import/${preview.token}/ai`, "POST");
       setPreview(res.preview);
-      notify(`${res.changed} row(s) received an AI-suggested category, marked for review.`, "info");
+      notify(`${plural(res.changed, "row")} received an AI-suggested category, marked for review.`, "info");
     } catch (e) {
       notify(e instanceof ApiError ? e.message : "AI suggestions failed. Rule-based categories are kept.", "error");
     } finally {
@@ -155,7 +155,7 @@ function ImportFlow() {
       setResult(res);
       setPreview(null);
       refresh();
-      notify(`Imported ${res.imported} transaction${res.imported === 1 ? "" : "s"}.`);
+      notify(`Imported ${plural(res.imported, "transaction")}.`);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "The import failed and nothing was saved.");
     } finally {
@@ -295,7 +295,7 @@ function ImportFlow() {
 
           {preview.invalid_rows.length ? (
             <details className="rounded-xl border border-line bg-ink-2/60 p-3 text-[0.82rem]">
-              <summary className="cursor-pointer text-fg">{preview.invalid_rows.length} row(s) couldn&apos;t be read and won&apos;t be imported</summary>
+              <summary className="cursor-pointer text-fg">{plural(preview.invalid_rows.length, "row")} couldn&apos;t be read and won&apos;t be imported</summary>
               <ul className="mt-2 space-y-1 text-muted">{preview.invalid_rows.map((r) => <li key={r.row_number}>Row {r.row_number}{r.page ? ` (page ${r.page})` : ""}: {r.reason}</li>)}</ul>
             </details>
           ) : null}
@@ -312,7 +312,7 @@ function ImportFlow() {
             <div className="flex flex-col-reverse gap-2 sm:flex-row">
               <Button variant="ghost" onClick={reset}>Discard</Button>
               <Button variant="primary" onClick={commit} loading={committing} disabled={preview.already_imported || preview.counts.to_import + (includeDups ? preview.counts.exact_duplicates : 0) === 0}>
-                {(() => { const n = preview.counts.to_import + (includeDups ? preview.counts.exact_duplicates : 0); return `Import ${n} transaction${n === 1 ? "" : "s"}`; })()}
+                Import {plural(preview.counts.to_import + (includeDups ? preview.counts.exact_duplicates : 0), "transaction")}
               </Button>
             </div>
           </div>
@@ -385,7 +385,7 @@ function Settings() {
       </Card>
       <ConfirmDialog open={open} title="Delete all your data?" tone="danger" confirmLabel="Delete permanently" busy={busy}
         confirmDisabled={typed !== "DELETE"} onConfirm={del} onCancel={() => { setOpen(false); setTyped(""); }}>
-        <p>This permanently deletes {meta?.counts.transactions ?? 0} transactions from {meta?.counts.statements ?? 0} statement(s). It can&apos;t be undone.</p>
+        <p>This permanently deletes {plural(meta?.counts.transactions ?? 0, "transaction")} from {plural(meta?.counts.statements ?? 0, "statement")}. It can&apos;t be undone.</p>
         <label className="mt-4 block text-[0.8rem] text-fg">Type <b>DELETE</b> to confirm
           <input value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" aria-label="Type DELETE to confirm"
             className="mt-1.5 h-10 w-full rounded-xl border border-line bg-ink-2 px-3 text-fg" />

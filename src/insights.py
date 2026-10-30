@@ -24,6 +24,7 @@ from datetime import date, timedelta
 import pandas as pd
 
 from src import analytics, database
+from src.text import plural
 from src.analytics import Filters
 from src.money import format_inr
 
@@ -239,7 +240,7 @@ def build_insights(conn, filters: Filters | None = None, recurring=None, anomali
         insights.append(Insight(
             "top_merchant", "Largest merchant",
             f"{r['merchant']} received the most money: {format_inr(r['expenditure_paise'])} across "
-            f"{int(r['transaction_count'])} payments ({r['share_pct']:.0f}% of expenditure).",
+            f"{plural(r['transaction_count'], 'payment')} ({r['share_pct']:.0f}% of expenditure).",
             facts={"merchant": r["merchant"]}, period=period, value_paise=int(r["expenditure_paise"]),
             value_pct=float(r["share_pct"]), subject=r["merchant"],
             link={**base_link, "merchants": [r["merchant"]], "types": ["expense"]}))
@@ -250,7 +251,7 @@ def build_insights(conn, filters: Filters | None = None, recurring=None, anomali
         insights.append(Insight(
             "top_weekday", "Highest-spending weekday",
             f"You spend the most on {r['weekday_name']}s: {format_inr(r['expenditure_paise'])} "
-            f"across {int(r['transaction_count'])} payments.", facts={"weekday": r["weekday_name"]},
+            f"across {plural(r['transaction_count'], 'payment')}.", facts={"weekday": r["weekday_name"]},
             period=period, value_paise=int(r["expenditure_paise"]), subject=r["weekday_name"]))
 
     largest = analytics.largest_transactions(conn, filters, limit=1)
@@ -270,15 +271,16 @@ def build_insights(conn, filters: Filters | None = None, recurring=None, anomali
             monthly = recurring_monthly_total(recurring)
             insights.append(Insight(
                 "recurring", "Recurring payments",
-                f"{len(active)} recurring payments cost about {format_inr(monthly)} a month "
+                f"{plural(len(active), 'recurring payment')} cost about {format_inr(monthly)} a month "
                 f"(≈ {format_inr(monthly * 12)} a year, estimated).", facts={"count": len(active)},
-                period=period, value_paise=monthly, subject=f"{len(active)} payments"))
+                period=period, value_paise=monthly, subject=plural(len(active), "payment")))
 
     if totals["uncategorized_count"]:
         insights.append(Insight(
             "uncategorized", "Needs categories",
-            f"{int(totals['uncategorized_count'])} transactions "
-            f"({format_inr(totals['uncategorized_debits_paise'])} of debits) are uncategorized. "
+            f"{plural(totals['uncategorized_count'], 'transaction')} "
+            f"({format_inr(totals['uncategorized_debits_paise'])} of debits) "
+            f"{'is' if int(totals['uncategorized_count']) == 1 else 'are'} uncategorized. "
             "Fix them on the Transactions page to sharpen every chart.", "warning",
             period=period, value_paise=int(totals["uncategorized_debits_paise"]),
             link={**base_link, "statuses": ["uncategorized"]}))
@@ -286,7 +288,7 @@ def build_insights(conn, filters: Filters | None = None, recurring=None, anomali
     if anomalies is not None and not anomalies.empty:
         insights.append(Insight(
             "unusual", "Unusual payments",
-            f"{len(anomalies)} payment(s) are much larger than your usual spending at the same "
+            f"{plural(len(anomalies), 'payment')} {'is' if len(anomalies) == 1 else 'are'} much larger than your usual spending at the same "
             "merchant or in the same category. Unusual doesn't mean fraudulent — review them on "
             "the Spending Insights page.", "warning", period=period,
             value_paise=int(anomalies["amount_paise"].max())))
