@@ -28,6 +28,11 @@ LIMITATIONS = [
 ]
 
 
+
+def _missing(value) -> bool:
+    """None or NaN (pandas gives NaN for a change from ₹0, which has no percentage)."""
+    return value is None or (isinstance(value, float) and value != value)
+
 def _records(frame, columns: list[str], limit: int | None = None) -> list[dict]:
     if frame is None or frame.empty:
         return []
@@ -193,7 +198,7 @@ def render_pdf(data: dict) -> bytes:
         ["Expenditure", format_inr(k["expenditure_paise"]), "Income", format_inr(k["income_paise"])],
         ["Net cash flow", _signed(k["net_cash_flow_paise"]), "Refunds", format_inr(k["refunds_paise"])],
         ["Change vs previous month",
-         "n/a" if not mom or mom["change_pct"] is None
+         "n/a" if not mom or _missing(mom["change_pct"])
          else f"{mom['change_pct']:+.1f}% ({_signed(mom['change_paise'])})".replace("-", "−"),
          "Recurring (est. per month)", format_inr(k["recurring"]["estimated_monthly_paise"])],
         ["Budget used", "no budget" if not b else f"{_pct(b['utilisation_pct'])} of {format_inr(b['budget_paise'])}",
@@ -253,7 +258,7 @@ def render_pdf(data: dict) -> bytes:
         story.append(P(f"Month-over-month by category ({comp['previous_label']} → {comp['current_label']})", s_h2))
         rows = [["Category", "Previous", "Current", "Change", "Change %"]] + [
             [r["category"], format_inr(r["previous_paise"]), format_inr(r["current_paise"]), _signed(r["change_paise"]),
-             "new" if r["change_pct"] is None else f"{r['change_pct']:+.1f}%".replace("-", "−")] for r in comp["categories"]]
+             "new" if _missing(r["change_pct"]) else f"{r['change_pct']:+.1f}%".replace("-", "−")] for r in comp["categories"]]
         story.append(table(rows, [50 * mm, 33 * mm, 33 * mm, 35 * mm, 29 * mm]))
 
     # ---- budget

@@ -326,6 +326,13 @@ misprinted. The row is still worth a look, so it goes under Needs review with th
 Data-quality counts also ignore exact duplicates that were skipped, so a copied row is never reported as
 "uncategorised" when it was never imported.
 
+**53. Why doesn't Spendly compare an uncategorised payment with the "Other" category?**
+"Other" is where every payment with no matching rule lands, so it mixes unrelated merchants. Testing showed the
+flaw: a ₹42,990 electronics purchase was flagged as "128× the median of your Other payments", and that median was a
+₹336 coffee. Uncategorised payments are now checked only against their own merchant's history. Once you categorise
+the purchase as Shopping, it is compared with your earlier Shopping payments ("19.6× the median, ₹2,190"), which
+is a meaningful baseline. The synthetic evaluation results didn't change.
+
 ## Numbers worth knowing (demo data)
 - 285 synthetic rows, April–September 2026. One exact duplicate is skipped, so 284 are imported.
 - The August spike comes from a ₹54,999 laptop. It's flagged as unusual at 29.8× the median of the 11 earlier Shopping

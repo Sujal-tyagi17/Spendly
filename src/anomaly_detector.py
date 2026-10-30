@@ -8,7 +8,8 @@ Reference distribution ("compared with what?")
     For each payment, the comparison set is the user's **earlier** payments
     (strictly earlier dates, so nothing from the future leaks in):
       1. the same merchant, if it has ≥ ``merchant_min_observations`` earlier payments;
-      2. otherwise the same category, if it has ≥ ``min_observations`` earlier payments;
+      2. otherwise the same category, if it has ≥ ``min_observations`` earlier payments
+         (never the uncategorised "Other" bucket, which mixes unrelated merchants);
       3. otherwise the payment is *not checked* (insufficient history) — it is never
          guessed to be normal or unusual.
 
@@ -162,6 +163,11 @@ def detect_anomalies(transactions: pd.DataFrame, reviews: dict[int, str] | None 
     def reference(i: int) -> Reference | None:
         for kind, key, minimum in (("merchant", merchants[i], settings.merchant_min_observations),
                                    ("category", categories[i], settings.min_observations)):
+            # "Other" is a catch-all of unrelated, uncategorised merchants: a ₹42,990 purchase
+            # compared with the median of a dozen ₹300 coffees says nothing. Only the
+            # merchant's own history counts for those rows.
+            if kind == "category" and key == config.UNCATEGORIZED:
+                continue
             sample = groups[(kind, key)][1] if method == "iqr_full" else earlier(kind, key, dates[i])
             if len(sample) >= minimum:
                 return Reference(kind, key, sample)

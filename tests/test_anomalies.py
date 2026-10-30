@@ -91,10 +91,10 @@ def test_comparison_is_category_specific():
 
 
 def test_merchant_history_preferred_and_consistency_guard():
-    # Rent ₹18,000 in "Other" next to ₹100 purchases. The first rent payment is unusual for the
+    # Rent ₹18,000 filed under "Shopping" next to ₹100 purchases. The first rent payment is unusual for the
     # category; the 2nd onward match the landlord's own earlier payments, so they aren't flagged.
     amounts = [100, 120, 90, 110, 130, 95, 105, 115, 18000, 18000, 18000, 18000, 18000, 18000, 18000]
-    flagged, _ = detect_anomalies(frame({"Other": amounts}, merchant_for=lambda c, i: "Landlord" if i >= 8 else f"Shop {i}"))
+    flagged, _ = detect_anomalies(frame({"Shopping": amounts}, merchant_for=lambda c, i: "Landlord" if i >= 8 else f"Shop {i}"))
     assert len(flagged) == 1 and flagged.iloc[0]["merchant"] == "Landlord"
     assert flagged.iloc[0]["transaction_date"] == "2026-01-09"  # only the first one
 
@@ -250,3 +250,16 @@ def test_api_evaluation_endpoint():
     with TestClient(main.app) as c:
         j = c.get("/api/anomalies/evaluation").json()
     assert j["test_period"] == list(anomaly_eval.TEST) and len(j["results"]) == 4
+
+
+def test_uncategorised_other_is_not_a_comparison_group():
+    # Twelve ₹300 coffees and one ₹42,990 purchase, all uncategorised ("Other"), each from a
+    # different merchant. "Other" mixes unrelated merchants, so it is never used as the baseline:
+    # nothing is flagged, and the rows are reported as having too little history instead.
+    amounts = [300, 320, 280, 310, 290, 330, 300, 305, 295, 315, 285, 325, 42990]
+    flagged, info = detect_anomalies(frame({"Other": amounts}, merchant_for=lambda c, i: f"Shop {i}"))
+    assert flagged.empty
+    # The same purchase IS checked against its own merchant's history once there is enough of it.
+    repeat = [300, 320, 280, 310, 290, 330, 300, 305, 295, 315, 42990]
+    flagged, _ = detect_anomalies(frame({"Other": repeat}, merchant_for=lambda c, i: "Croma"))
+    assert len(flagged) == 1 and flagged.iloc[0]["basis"] == "merchant"
