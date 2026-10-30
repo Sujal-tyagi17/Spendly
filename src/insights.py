@@ -24,7 +24,7 @@ from datetime import date, timedelta
 import pandas as pd
 
 from src import analytics, database
-from src.text import plural
+from src.text import plural, whole_pct
 from src.analytics import Filters
 from src.money import format_inr
 
@@ -178,7 +178,7 @@ def describe_change(comp: PeriodComparison) -> Insight:
         top = cats.sort_values("change_paise", ascending=False).iloc[0]
         share = 100 * top["change_paise"] / comp.change_paise
         text += f" {top['category']} contributed the largest share of the increase (+{format_inr(top['change_paise'])}"
-        text += f", {share:.0f}% of it)." if share <= 100 else ")."
+        text += f", {whole_pct(share)}% of it)." if share <= 100 else ")."
         facts["top_driver"] = top["category"]
     elif cur < prev and not cats.empty and cats["change_paise"].min() < 0:
         top = cats.sort_values("change_paise").iloc[0]
@@ -262,7 +262,7 @@ def build_insights(conn, filters: Filters | None = None, recurring=None, anomali
         insights.append(Insight(
             "largest_category", "Largest category",
             f"{r['category']} is your largest spending category: {format_inr(r['expenditure_paise'])}"
-            f" ({r['share_pct']:.0f}% of expenditure).", facts={"category": r["category"]},
+            f" ({whole_pct(r['share_pct'])}% of expenditure).", facts={"category": r["category"]},
             period=period, value_paise=int(r["expenditure_paise"]), value_pct=float(r["share_pct"]),
             subject=r["category"], link={**base_link, "categories": [r["category"]], "types": ["expense"]}))
 
@@ -272,7 +272,7 @@ def build_insights(conn, filters: Filters | None = None, recurring=None, anomali
         insights.append(Insight(
             "top_merchant", "Largest merchant",
             f"{r['merchant']} received the most money: {format_inr(r['expenditure_paise'])} across "
-            f"{plural(r['transaction_count'], 'payment')} ({r['share_pct']:.0f}% of expenditure).",
+            f"{plural(r['transaction_count'], 'payment')} ({whole_pct(r['share_pct'])}% of expenditure).",
             facts={"merchant": r["merchant"]}, period=period, value_paise=int(r["expenditure_paise"]),
             value_pct=float(r["share_pct"]), subject=r["merchant"],
             link={**base_link, "merchants": [r["merchant"]], "types": ["expense"]}))

@@ -25,3 +25,12 @@ def _group_in(n: int) -> str:
     if head:
         parts.insert(0, head)
     return sign + ",".join(parts) + "," + tail
+
+
+def whole_pct(value: float) -> str:
+    """A percentage rounded to a whole number, half away from zero (28.5 → "29").
+
+    Python's own rounding sends halves to the nearest even number (28.5 → "28"), which
+    disagreed with the web app's rounding of the same value on the same card."""
+    from decimal import ROUND_HALF_UP, Decimal
+    return str(Decimal(str(value)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
