@@ -54,8 +54,10 @@ On the Python side:
 - **Evaluation:** parser accuracy and unusual-payment detection (robust z-score) are measured on labelled synthetic
   data ([parser](docs/PARSER_EVALUATION.md), [anomalies](docs/ANOMALY_EVALUATION.md)).
 
-Worked examples with real output, such as Amazon's average order being ₹10,572 against a median of ₹1,949 because
-of one large purchase: **[SQL showcase](docs/SQL_SHOWCASE.md)**.
+Example from the synthetic demo data: Amazon's six purchases average ₹10,572 (₹63,431 ÷ 6), but the median is
+₹1,949, because one ₹54,999 laptop pulls the average up. Reporting the median alongside the average keeps one
+outlier from defining "a typical order". More worked examples with their output:
+**[SQL showcase](docs/SQL_SHOWCASE.md)**.
 
 <p align="center"><img src="docs/screenshots/web-analysis.jpg" alt="SQL Analysis page: income, expenditure, refunds and net cash flow with the line that reconciles them, monthly income vs expenditure and running net cash flow" width="80%"></p>
 

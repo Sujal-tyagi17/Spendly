@@ -79,7 +79,9 @@ DENSE_RANK() OVER (ORDER BY p.transaction_count DESC)           AS frequency_ran
 | Amazon | 6 | ₹63,431 | ₹10,572 | ₹1,949 | 52.7% |
 | Zomato | 36 | ₹13,570 | ₹377 | ₹355 | 56.8% |
 
-**What it means.** Amazon's average (₹10,572) is five times its median (₹1,949) because of one ₹54,999 purchase.
+**What it means.** Amazon's average (₹10,572 = ₹63,431 ÷ 6 purchases) is more than five times its median (₹1,949,
+the mean of the middle two payments, ₹1,743 and ₹2,155) because of one ₹54,999 laptop. The ₹1,299 refund in July is
+not a purchase, so it is excluded. All figures are from the synthetic demo dataset.
 **Why it matters.** Reporting the median next to the average stops one outlier from distorting "a typical order".
 
 ## 4. Is spending concentrated in a few merchants? (ranking + Herfindahl–Hirschman index)

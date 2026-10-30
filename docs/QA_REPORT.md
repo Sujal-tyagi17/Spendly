@@ -181,7 +181,7 @@ added for Gemini failure paths (timeouts, 429, rejected key, server error, malfo
 
 | Check | Result |
 |---|---|
-| `pytest` (no Gemini key in the environment) | 456 passed, 0 failed |
+| `pytest` (no Gemini key in the environment) | 456 passed, 0 failed. That is the 445 tests at the end of manual testing (commit `89a0686`, re-run to confirm) plus the 11 new Gemini failure-path tests in `tests/test_ai_failures.py` |
 | `npm run lint` / `npx tsc --noEmit` / `npm run build` | clean / clean / compiled |
 | Browser E2E, web app + Streamlit (`python -m e2e.run_e2e --streamlit …`) | 69 passed, 0 failed |
 | Browser E2E, public-deployment journey (`--public`) | 7 passed, 0 failed |
