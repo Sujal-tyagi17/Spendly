@@ -5,13 +5,17 @@ to show where the money went and why spending changed from one month to the next
 questions a statement alone can't: which categories and merchants drove a change, what repeats every month, and
 how far the numbers can be trusted.
 
+<p align="center">
+  <a href="https://spendly-insights.onrender.com"><b>Live demo</b></a> ·
+  <a href="https://spendly-insights.streamlit.app/">Streamlit version</a> ·
+  <a href="docs/SQL_SHOWCASE.md">SQL showcase</a> ·
+  <a href="#run-locally">Run locally</a>
+</p>
+<p align="center"><sub>Synthetic data only. The free server can take about a minute to wake up on the first visit.</sub></p>
+
 <img src="docs/screenshots/web-overview.jpg" alt="Spendly Overview dashboard on synthetic demo data: expenditure, income, net cash flow, month-over-month change, a monthly spending chart and a breakdown of why spending changed" width="100%">
 
 <p align="center"><sub>The Next.js dashboard on the built-in synthetic demo data (Apr–Sep 2026). No real financial data appears in this repository.</sub></p>
-
-**Live demo:** [spendly-insights.onrender.com](https://spendly-insights.onrender.com) (the full dashboard on synthetic data;
-the first visit can take about a minute while the free server wakes up). Backup: the Streamlit version at
-[spendly-insights.streamlit.app](https://spendly-insights.streamlit.app/).
 
 ## Key highlights
 
