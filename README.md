@@ -128,11 +128,12 @@ Run on 31 Oct 2026 against the current code:
 | Check | Result |
 |---|---|
 | Python tests (`pytest`) | 456 passed, 0 failed |
-| Browser end-to-end tests (Playwright), dashboard and Streamlit | 69 passed, 0 failed |
+| Browser end-to-end tests (Playwright), dashboard and Streamlit | 70 passed, 0 failed (plus 7 in the public-deployment journey) |
 | Lint, type check and production build of the dashboard | All clean |
 
 A manual test with six synthetic statements (bank, multi-page, PhonePe, messy, overlapping and password-protected)
-matched every checked figure to the source data and led to 20 fixes. Details are in the [QA report](docs/QA_REPORT.md).
+matched every checked figure to the source data and led to 20 fixes. Details, including what was not tested, are in
+the [QA report](docs/QA_REPORT.md).
 
 ## Limitations
 

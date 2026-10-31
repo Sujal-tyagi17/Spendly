@@ -927,6 +927,26 @@ code review plus automated tests, not a penetration test, and Spendly makes **no
 - IP-based limits depend on correct proxy configuration (`--forwarded-allow-ips`);
 - HSTS must be set by the HTTPS host.
 
+## Performance
+
+`python -m scripts.benchmark` (server-side, in-memory database). Times depend on the machine; these are from the
+Linux test machine on 31 Oct 2026.
+
+| Operation (ms) | 100 txns | 1,000 txns | 10,000 txns |
+|---|---:|---:|---:|
+| PDF preview | 429 | 3,868 | n/a (page limit) |
+| CSV preview | 6 | 89 | 609 |
+| Commit | 1 | 9 | 102 |
+| Overview | 98 | 124 | 649 |
+| Filtered overview | 43 | 134 | 564 |
+| Insights | 56 | 109 | 616 |
+| SQL analysis | 30 | 45 | 313 |
+| Recurring payments | 12 | 17 | 92 |
+| Data quality | 10 | 9 | 30 |
+| Transactions page (50 rows) | 10 | 11 | 10 |
+| CSV export | 12 | 20 | 148 |
+| Monthly PDF report | 197 | 186 | 664 |
+
 ## Testing and verification
 
 ```bash
@@ -962,11 +982,12 @@ npm run build
 **Browser end-to-end suite** (Playwright, synthetic data, a throwaway data folder):
 
 ```bash
-SPENDLY_DATA_DIR=/tmp/spendly-e2e uvicorn api.main:app --port 8000 --no-access-log   # terminal 1 (or log to api.log)
+SPENDLY_DATA_DIR=/tmp/spendly-e2e uvicorn api.main:app --port 8000 > api.log 2>&1  # terminal 1
 cd web && npm run build && npx next start -p 3000                                    # terminal 2
 SPENDLY_DATA_DIR=/tmp/spendly-st streamlit run app.py --server.port 8501             # terminal 3 (optional)
-python -m e2e.run_e2e --base http://localhost:3000 \
-    --streamlit http://localhost:8501 --streamlit-db /tmp/spendly-st/spendly_user.db # 69 checks with Streamlit, journeys A–G
+python -m e2e.run_e2e --base http://localhost:3000 --api-log api.log \
+    --streamlit http://localhost:8501 --streamlit-db /tmp/spendly-st/spendly_user.db # 70 checks, journeys A–G
+# Without --api-log the log-privacy check is skipped (69 checks).
 # public-mode session journey (restart the API with SPENDLY_PUBLIC_DEPLOYMENT=true first):
 python -m e2e.run_e2e --base http://localhost:3000 --public                         # 7 checks
 ```
