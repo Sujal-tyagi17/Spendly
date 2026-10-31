@@ -9,9 +9,9 @@ how far the numbers can be trusted.
 
 <p align="center"><sub>The Next.js dashboard on the built-in synthetic demo data (Apr–Sep 2026). No real financial data appears in this repository.</sub></p>
 
-**Live demo:** [spendly-insights.streamlit.app](https://spendly-insights.streamlit.app/) runs the Streamlit version on the same
-synthetic data and the same Python/SQL engine. It may take a minute to wake up. The full Next.js dashboard shown above,
-including Budget Planner and SQL Analysis, runs locally ([Run locally](#run-locally)).
+**Live demo:** [spendly-insights.onrender.com](https://spendly-insights.onrender.com) (the full dashboard on synthetic data;
+the first visit can take about a minute while the free server wakes up). Backup: the Streamlit version at
+[spendly-insights.streamlit.app](https://spendly-insights.streamlit.app/).
 
 ## Key highlights
 
@@ -78,7 +78,7 @@ flowchart LR
 ```
 
 All calculations happen in the Python and SQL core (`src/`, `sql/`). The Next.js dashboard is the most complete
-interface; the Streamlit app is a lighter view of the same engine with the same numbers, and it is the hosted demo.
+interface and the one deployed; the Streamlit app is a lighter view of the same engine with the same numbers.
 
 ## Tech stack
 
