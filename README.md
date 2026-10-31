@@ -11,7 +11,6 @@ how far the numbers can be trusted.
   <a href="docs/SQL_SHOWCASE.md">SQL showcase</a> ·
   <a href="#run-locally">Run locally</a>
 </p>
-<p align="center"><sub>Synthetic data only. The free server can take about a minute to wake up on the first visit.</sub></p>
 
 <img src="docs/screenshots/web-overview.jpg" alt="Spendly Overview dashboard on synthetic demo data: expenditure, income, net cash flow, month-over-month change, a monthly spending chart and a breakdown of why spending changed" width="100%">
 
